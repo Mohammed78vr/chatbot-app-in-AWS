@@ -17,6 +17,7 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.chains import create_history_aware_retriever, create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_core.messages import HumanMessage, AIMessage
+import boto3
 import chromadb
 
 load_dotenv()
@@ -40,14 +41,19 @@ llm = ChatOpenAI(model=model)
 
 # LangChain setup
 embedding_function = OpenAIEmbeddings()
-chroma_client = chromadb.HttpClient(host='localhost', port=8000)
+chroma_client = chromadb.HttpClient(host=os.environ.get("CHROMADB_HOST"), port=os.environ.get("CHROMADB_PORT"))
 collection = chroma_client.get_or_create_collection("langchain")
 vectorstore = Chroma(
-    client=chroma_client,
-    collection_name="langchain",
-    embedding_function=embedding_function,
+            client=chroma_client,
+            collection_name="langchain",
+            embedding_function=embedding_function,
 )
 
+s3_client = boto3.client('s3',
+    aws_access_key_id=os.environ.get('AWS_ACCESS_KEY_ID'),
+    aws_secret_access_key=os.environ.get('AWS_SECRET_ACCESS_KEY')
+)
+bucket_name = os.environ.get('AWS_BUCKET_NAME')
 
 app = FastAPI()
 
@@ -115,10 +121,13 @@ async def load_chat(db: psycopg2.extensions.connection = Depends(get_db)):
         records = []
         for row in rows:
             chat_id, name, file_path, pdf_name, pdf_path, pdf_uuid= row["id"], row["name"], row["file_path"], row["pdf_name"], row["pdf_path"], row["pdf_uuid"]
-            if os.path.exists(file_path):
-                with open(file_path, "r", encoding="utf-8") as f:
-                    messages = json.load(f)
+
+            try:
+                response = s3_client.get_object(Bucket=bucket_name, Key=file_path)
+                messages = json.loads(response['Body'].read())
                 records.append({"id": chat_id, "chat_name": name, "messages": messages, "pdf_name":pdf_name, "pdf_path":pdf_path, "pdf_uuid":pdf_uuid})
+            except s3_client.exceptions.NoSuchKey:
+                continue
 
         return records
 
@@ -129,11 +138,13 @@ async def load_chat(db: psycopg2.extensions.connection = Depends(get_db)):
 async def save_chat(request: SaveChatRequest, db: psycopg2.extensions.connection = Depends(get_db)):
     try:
         file_path = f"chat_logs/{request.chat_id}.json"
-        os.makedirs("chat_logs", exist_ok=True)
         
-        # Save messages to file
-        with open(file_path, "w", encoding="utf-8") as f:
-            json.dump(request.messages, f, ensure_ascii=False, indent=4)
+        messages_data = json.dumps(request.messages, ensure_ascii=False, indent=4)
+        s3_client.put_object(
+            Bucket=bucket_name,
+            Key=file_path,
+            Body=messages_data
+        )
         
         # Insert or update database record
         with db.cursor() as cursor:
@@ -160,10 +171,11 @@ async def delete_chat(request: DeleteChatRequest, db: psycopg2.extensions.connec
         # Retrieve the file path before deleting the record
         file_path = None
         with db.cursor() as cursor:
-            cursor.execute("SELECT file_path FROM advanced_chats WHERE id = %s", (request.chat_id,))
+            cursor.execute("SELECT file_path, pdf_path FROM advanced_chats WHERE id = %s", (request.chat_id,))
             result = cursor.fetchone()
             if result:
                 file_path = result[0]
+                pdf_path = result[1]
             else:
                 raise HTTPException(status_code=404, detail="Chat not found")
 
@@ -173,8 +185,14 @@ async def delete_chat(request: DeleteChatRequest, db: psycopg2.extensions.connec
         db.commit()
 
         # Delete the associated file, if it exists
-        if file_path and os.path.exists(file_path):
-            os.remove(file_path)
+        # if file_path and os.path.exists(file_path):
+        #     os.remove(file_path)
+        
+        if file_path:
+            s3_client.delete_object(Bucket=bucket_name, Key=file_path)
+
+        if pdf_path:
+            s3_client.delete_object(Bucket=bucket_name, Key=pdf_path)
 
         return {"message": "Chat deleted successfully"}
 
@@ -199,6 +217,8 @@ async def upload_pdf(file: UploadFile = File(...)):
 
         with open(file_path, "wb") as f:
             f.write(await file.read())
+            
+        s3_client.upload_file(file_path, bucket_name, file_path)
 
         # Load and process PDF
         loader = PyPDFLoader(file_path)
@@ -212,6 +232,8 @@ async def upload_pdf(file: UploadFile = File(...)):
             ids=[str(uuid.uuid4()) for _ in texts],
             metadatas=[{"pdf_uuid": pdf_uuid} for _ in texts]    
         )
+
+        os.remove(file_path)
 
         return {"message": "File uploaded successfully", "pdf_path": file_path, "pdf_uuid":pdf_uuid}
     except Exception as e:

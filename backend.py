@@ -18,30 +18,40 @@ from langchain.chains import create_history_aware_retriever, create_retrieval_ch
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_core.messages import HumanMessage, AIMessage
 import boto3
+from botocore.exceptions import ClientError
 import chromadb
 
-load_dotenv()
+#load_dotenv()
 
-# Get secrets from AWS Secrets Manager
-secrets_client = boto3.client('secretsmanager')
+def get_secrets(secret_name="SECRET_NAME", region_name="us-east-1"):
+    # Create a session and client for Secrets Manager
+    session = boto3.session.Session()
+    client = session.client(
+        service_name='secretsmanager',
+        region_name=region_name
+    )
 
-def get_secret(secret_name):
     try:
-        response = secrets_client.get_secret_value(SecretId=secret_name)
-        return response['SecretString']
-    except Exception as e:
-        print(f"Error getting secret {secret_name}: {str(e)}")
-        return None
+        response = client.get_secret_value(SecretId=secret_name)
+        secret_string = response['SecretString']
+        return json.loads(secret_string)  # Converts the JSON string to a Python dict
+    except ClientError as e:
+        print(f"Failed to retrieve secrets: {e}")
+        return {}
 
-DB_NAME = get_secret('PROJ-DB-NAME')
-DB_USER = get_secret('PROJ-DB-USER')
-DB_PASSWORD = get_secret('PROJ-DB-PASSWORD')
-DB_HOST = get_secret('PROJ-DB-HOST')
-DB_PORT = get_secret('PROJ-DB-PORT')
-OPENAI_API_KEY = get_secret('PROJ-OPENAI-API-KEY')
-S3_BUCKET_NAME = get_secret('PROJ-S3-BUCKET-NAME')
-CHROMADB_HOST = get_secret('PROJ-CHROMADB-HOST')
-CHROMADB_PORT = get_secret('PROJ-CHROMADB-PORT')
+# 🔐 Load all secrets
+secrets = get_secrets()
+
+# 🗝 Access your secrets as needed
+DB_NAME = secrets.get('PROJ-DB-NAME')
+DB_USER = secrets.get('PROJ-DB-USER')
+DB_PASSWORD = secrets.get('PROJ-DB-PASSWORD')
+DB_HOST = secrets.get('PROJ-DB-HOST')
+DB_PORT = secrets.get('PROJ-DB-PORT')
+OPENAI_API_KEY = secrets.get('PROJ-OPENAI-API-KEY')
+S3_BUCKET_NAME = secrets.get('PROJ-S3-BUCKET-NAME')
+CHROMADB_HOST = secrets.get('PROJ-CHROMADB-HOST')
+CHROMADB_PORT = secrets.get('PROJ-CHROMADB-PORT')
 
 
 DB_CONFIG = {
@@ -54,7 +64,7 @@ DB_CONFIG = {
 
 client = OpenAI(api_key=OPENAI_API_KEY)
 
-model = "gpt-3.5-turbo"
+model = "gpt-4o-mini"
 
 # VECTOR_DB_DIR = "chromadb"
 # os.makedirs(VECTOR_DB_DIR, exist_ok=True)

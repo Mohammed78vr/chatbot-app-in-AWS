@@ -1,0 +1,46 @@
+name: Python App CI/CD Pipeline with AWS Deployment
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    # Checkout the repository
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    # Set up Python environment
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        cache: 'pip' # caching pip dependencies
+    - run: |
+        pip install -r requirements.txt
+
+    # Run tests (Placeholder for actual tests)
+    - name: Run tests
+      run: |
+        echo "Run tests"
+
+    # Configure AWS credentials
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ secrets.AWS_REGION }}
+
+    # Deploy to EC2 instance
+    - name: Deploy to EC2
+      run: |
+        aws ssm send-command \
+          --instance-ids ${{ secrets.EC2_INSTANCE_ID }} \
+          --document-name "AWS-RunShellScript" \
+          --parameters commands=["export GITHUB_TOKEN=${{ secrets.TOKEN }} && sudo -u ec2-user bash /home/ec2-user/SDA-Chatbot-Project/update_app.sh"] \
+          --comment "Deploying application update"

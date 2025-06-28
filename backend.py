@@ -22,26 +22,48 @@ import chromadb
 
 load_dotenv()
 
+# Get secrets from AWS Secrets Manager
+secrets_client = boto3.client('secretsmanager')
+
+def get_secret(secret_name):
+    try:
+        response = secrets_client.get_secret_value(SecretId=secret_name)
+        return response['SecretString']
+    except Exception as e:
+        print(f"Error getting secret {secret_name}: {str(e)}")
+        return None
+
+DB_NAME = get_secret('PROJ-DB-NAME')
+DB_USER = get_secret('PROJ-DB-USER')
+DB_PASSWORD = get_secret('PROJ-DB-PASSWORD')
+DB_HOST = get_secret('PROJ-DB-HOST')
+DB_PORT = get_secret('PROJ-DB-PORT')
+OPENAI_API_KEY = get_secret('PROJ-OPENAI-API-KEY')
+S3_BUCKET_NAME = get_secret('PROJ-S3-BUCKET-NAME')
+CHROMADB_HOST = get_secret('PROJ-CHROMADB-HOST')
+CHROMADB_PORT = get_secret('PROJ-CHROMADB-PORT')
+
+
 DB_CONFIG = {
-    "dbname": os.environ.get("DB_NAME"),
-    "user": os.environ.get("DB_USER"),
-    "password": os.environ.get("DB_PASSWORD"),
-    "host": os.environ.get("DB_HOST"),
-    "port": os.environ.get("DB_PORT"),
+    "dbname": DB_NAME,
+    "user": DB_USER,
+    "password": DB_PASSWORD,
+    "host": DB_HOST,
+    "port": DB_PORT,
 }
 
-client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+client = OpenAI(api_key=OPENAI_API_KEY)
 
-model = "gpt-4o-mini"
+model = "gpt-3.5-turbo"
 
 # VECTOR_DB_DIR = "chromadb"
 # os.makedirs(VECTOR_DB_DIR, exist_ok=True)
 
-llm = ChatOpenAI(model=model)
+llm = ChatOpenAI(model=model, api_key=OPENAI_API_KEY)
 
 # LangChain setup
-embedding_function = OpenAIEmbeddings()
-chroma_client = chromadb.HttpClient(host=os.environ.get("CHROMADB_HOST"), port=os.environ.get("CHROMADB_PORT"))
+embedding_function = OpenAIEmbeddings(api_key=OPENAI_API_KEY)
+chroma_client = chromadb.HttpClient(host=CHROMADB_HOST, port=CHROMADB_PORT)
 collection = chroma_client.get_or_create_collection("langchain")
 vectorstore = Chroma(
             client=chroma_client,
@@ -49,11 +71,8 @@ vectorstore = Chroma(
             embedding_function=embedding_function,
 )
 
-s3_client = boto3.client('s3',
-    aws_access_key_id=os.environ.get('AWS_ACCESS_KEY_ID'),
-    aws_secret_access_key=os.environ.get('AWS_SECRET_ACCESS_KEY')
-)
-bucket_name = os.environ.get('AWS_BUCKET_NAME')
+# Initialize S3 client
+s3_client = boto3.client('s3')
 
 app = FastAPI()
 
@@ -123,11 +142,15 @@ async def load_chat(db: psycopg2.extensions.connection = Depends(get_db)):
             chat_id, name, file_path, pdf_name, pdf_path, pdf_uuid= row["id"], row["name"], row["file_path"], row["pdf_name"], row["pdf_path"], row["pdf_uuid"]
 
             try:
-                response = s3_client.get_object(Bucket=bucket_name, Key=file_path)
-                messages = json.loads(response['Body'].read())
+                response = s3_client.get_object(Bucket=S3_BUCKET_NAME, Key=file_path)
+                messages = json.loads(response['Body'].read().decode('utf-8'))
                 records.append({"id": chat_id, "chat_name": name, "messages": messages, "pdf_name":pdf_name, "pdf_path":pdf_path, "pdf_uuid":pdf_uuid})
             except s3_client.exceptions.NoSuchKey:
                 continue
+            # if os.path.exists(file_path):
+            #     with open(file_path, "r", encoding="utf-8") as f:
+            #         messages = json.load(f)
+            #     records.append({"id": chat_id, "chat_name": name, "messages": messages, "pdf_name":pdf_name, "pdf_path":pdf_path, "pdf_uuid":pdf_uuid})
 
         return records
 
@@ -138,12 +161,17 @@ async def load_chat(db: psycopg2.extensions.connection = Depends(get_db)):
 async def save_chat(request: SaveChatRequest, db: psycopg2.extensions.connection = Depends(get_db)):
     try:
         file_path = f"chat_logs/{request.chat_id}.json"
+        # os.makedirs("chat_logs", exist_ok=True)
         
+        # Save messages to file
+        # with open(file_path, "w", encoding="utf-8") as f:
+        #     json.dump(request.messages, f, ensure_ascii=False, indent=4)
+
         messages_data = json.dumps(request.messages, ensure_ascii=False, indent=4)
         s3_client.put_object(
-            Bucket=bucket_name,
+            Bucket=S3_BUCKET_NAME,
             Key=file_path,
-            Body=messages_data
+            Body=messages_data.encode('utf-8')
         )
         
         # Insert or update database record
@@ -189,10 +217,10 @@ async def delete_chat(request: DeleteChatRequest, db: psycopg2.extensions.connec
         #     os.remove(file_path)
         
         if file_path:
-            s3_client.delete_object(Bucket=bucket_name, Key=file_path)
+            s3_client.delete_object(Bucket=S3_BUCKET_NAME, Key=file_path)
 
         if pdf_path:
-            s3_client.delete_object(Bucket=bucket_name, Key=pdf_path)
+            s3_client.delete_object(Bucket=S3_BUCKET_NAME, Key=pdf_path)
 
         return {"message": "Chat deleted successfully"}
 
@@ -217,8 +245,8 @@ async def upload_pdf(file: UploadFile = File(...)):
 
         with open(file_path, "wb") as f:
             f.write(await file.read())
-            
-        s3_client.upload_file(file_path, bucket_name, file_path)
+        
+        s3_client.upload_file(file_path, S3_BUCKET_NAME, file_path)
 
         # Load and process PDF
         loader = PyPDFLoader(file_path)

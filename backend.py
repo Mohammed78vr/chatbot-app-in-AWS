@@ -21,9 +21,9 @@ import boto3
 from botocore.exceptions import ClientError
 import chromadb
 
-#load_dotenv()
+load_dotenv()
 
-def get_secrets(secret_name="SECRET_NAME", region_name="us-east-1"):
+def get_secrets(secret_name=os.environ.get("SECRET_NAME"), region_name=os.environ.get("REGION_NAME")):
     # Create a session and client for Secrets Manager
     session = boto3.session.Session()
     client = session.client(

@@ -42,5 +42,5 @@ jobs:
         aws ssm send-command \
           --instance-ids ${{ secrets.EC2_INSTANCE_ID }} \
           --document-name "AWS-RunShellScript" \
-          --parameters commands=["export GITHUB_TOKEN=${{ secrets.TOKEN }} && sudo -u ec2-user bash /home/ec2-user/SDA-Chatbot-Project/update_app.sh"] \
+          --parameters commands=["export GITHUB_TOKEN=${{ secrets.TOKEN }} && sudo -u ubuntu bash /home/ubuntu/chatbot-app-in-AWS/update_app.sh"] \
           --comment "Deploying application update"

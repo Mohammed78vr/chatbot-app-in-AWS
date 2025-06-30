@@ -3,7 +3,7 @@ name: Python App CI/CD Pipeline with AWS Deployment
 on:
   push:
     branches:
-      - stage-3
+      - main
 
 jobs:
   build-and-deploy:
@@ -36,11 +36,20 @@ jobs:
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ secrets.AWS_REGION }}
 
-    # Deploy to EC2 instance
-    - name: Deploy to EC2
+    # Deploy to EC2 Auto Scaling Group
+    - name: Deploy to EC2 Auto Scaling Group
       run: |
-        aws ssm send-command \
-          --instance-ids ${{ secrets.EC2_INSTANCE_ID }} \
-          --document-name "AWS-RunShellScript" \
-          --parameters commands=["export GITHUB_TOKEN=${{ secrets.TOKEN }} && sudo -u ubuntu bash /home/ubuntu/chatbot-app-in-AWS/update_app.sh"] \
-          --comment "Deploying application update"
+        # Get all instance IDs in the Auto Scaling Group
+        INSTANCE_IDS=$(aws autoscaling describe-auto-scaling-groups \
+          --auto-scaling-group-name ${{ secrets.ASG_NAME }} \
+          --query 'AutoScalingGroups[0].Instances[*].InstanceId' \
+          --output text)
+        
+        # Deploy to each instance in the ASG
+        for INSTANCE_ID in $INSTANCE_IDS; do
+          aws ssm send-command \
+            --instance-ids $INSTANCE_ID \
+            --document-name "AWS-RunShellScript" \
+            --parameters commands=["export GITHUB_TOKEN=${{ secrets.TOKEN }} && sudo -u ubuntu bash /home/ubuntu/chatbot-app-in-AWS/update_app.sh"] \
+            --comment "Deploying application update to ASG instance $INSTANCE_ID"
+        done

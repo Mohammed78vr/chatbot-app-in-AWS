@@ -129,7 +129,7 @@ chmod 400 ~/.ssh/my-key-pair.pem
    
    ```bash
    chmod +x setup.sh
-   ./setup.sh <PAT_token> <repo_url> <branch_name> <password>
+   bash setup.sh <PAT_token> <repo_url> <branch_name> <password>
    ```
    
    **Script Arguments:**
@@ -316,13 +316,28 @@ After running the setup script, verify that all services are running properly:
 - `instance_type`: EC2 instance type (default: "t2.large")
 - `vpc_cidr`: VPC CIDR block (default: "10.0.0.0/16")
 
-## Module Structure
+## Project Structure
 
 ```
-modules/
-├── vpc/           # VPC, subnets, IGW, routing
-├── security/      # Security groups
-└── ec2/           # EC2 instances, IAM roles
+├── terraform/                    # Terraform infrastructure code
+│   ├── modules/
+│   │   ├── vpc/                 # VPC, subnets, IGW, routing
+│   │   ├── security/            # Security groups
+│   │   └── ec2/                 # EC2 instances, IAM roles
+│   ├── main.tf                  # Main Terraform configuration
+│   ├── variables.tf             # Variable definitions
+│   ├── outputs.tf               # Output definitions
+│   ├── terraform.tfvars.example # Example variables file
+│   ├── deploy.sh                # Deployment script
+│   └── destroy.sh               # Cleanup script
+├── img/
+│   └── image.png                # Architecture diagram
+├── .gitignore                   # Git ignore file
+├── LICENSE                      # Project license
+├── README.md                    # Project documentation
+├── backend.py                   # FastAPI backend application
+├── chatbot.py                   # Streamlit frontend application
+└── requirements.txt             # Python dependencies
 ```
 
 ## Security Considerations

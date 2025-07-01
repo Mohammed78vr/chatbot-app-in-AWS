@@ -107,11 +107,14 @@ chmod 400 ~/.ssh/my-key-pair.pem
    ```
 
 7.  **One you are connected to the EC2 instance**
-    Create a file named ```setup.sh```. Then, copy and paste the script:
+    Create a file named ```setup.sh```. Then, copy and paste the script.
+    below. After that, run the scripts. The scripts take 4 arguments:
     - **PAT_token**: Your GitHub personal access token.
     - **repo_url**: The URL of your GitHub repository (without https://).
     - **branch_name**: The branch name to use on the EC2.
     - **password**: The password that will be altred from the postgresSql database.
+
+    > Note: You need to add your OPENAI API KEY in the ```OPENAI_API_KEY``` line.
 
     ```bash
     #!/bin/bash

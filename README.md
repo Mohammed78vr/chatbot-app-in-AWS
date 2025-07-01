@@ -32,13 +32,10 @@ It enables users to chat normally and upload PDFs to ask questions specifically 
 ## Architecture Overview
 
 The infrastructure includes:
-- **VPC** with public subnets across multiple AZs
+- **VPC** with public subnets
 - **Internet Gateway** for internet connectivity
 - **Security Groups** with least privilege access
-- **EC2 instance** (t2.large) running Ubuntu 22.04 LTS with monitoring and logging
-- **Elastic IP** for static public IP address
-- **VPC Flow Logs** for network monitoring
-- **CloudWatch monitoring** and logging
+- **EC2 instance** (t2.large) running Ubuntu 22.04 LTS
 
 ### Architecture Diagram
 
@@ -64,10 +61,8 @@ The diagram above illustrates the complete AWS infrastructure architecture deplo
 - **FastAPI**: for handling backend logic.
 - **Chromadb**: for vectorized database and context-aware of the documents.
 
-**Security & Monitoring:**
+**Security**
 - **IAM Roles**: Least privilege access for EC2 instances
-- **VPC Flow Logs**: Network traffic monitoring and security analysis
-- **CloudWatch**: Comprehensive monitoring and logging for operational insights
 - **EBS Encryption**: Encrypted storage volumes for data protection
 
 This architecture follows AWS Well-Architected Framework principles, ensuring security, reliability, performance efficiency, cost optimization, and operational excellence.

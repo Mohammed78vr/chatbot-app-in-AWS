@@ -1,6 +1,20 @@
-# AWS Terraform Infrastructure Project
+# AWS Infrastructure Deployment for RAG Chatbot using Terraform
 
-This Terraform project creates a secure and scalable AWS infrastructure following AWS Well-Architected Framework principles.
+This project deploys a Retrieval-Augmented Generation (RAG) Chatbot application on AWS using Terraform for Infrastructure as Code (IaC).
+
+## Project Overview
+
+The chatbot uses:
+
+Streamlit for the user interface
+
+FastAPI for handling backend logic
+
+ChromaDB (Vector Store) for retrieving relevant information from user-uploaded PDFs
+
+PostgreSQL for structured data storage
+
+It enables users to chat normally and upload PDFs to ask questions specifically about the content of the uploaded documents, making the chatbot highly context-aware and document-focused.
 
 ## Architecture Overview
 

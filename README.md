@@ -6,13 +6,13 @@ This project deploys a Retrieval-Augmented Generation (RAG) Chatbot application 
 
 The chatbot uses:
 
-Streamlit for the user interface
+- **Streamlit** for the user interface
 
-FastAPI for handling backend logic
+- **FastAPI** for handling backend logic
 
-ChromaDB (Vector Store) for retrieving relevant information from user-uploaded PDFs
+- **ChromaDB** (Vector Store) for retrieving relevant information from user-uploaded PDFs
 
-PostgreSQL for structured data storage
+- **PostgreSQL** for structured data storage
 
 It enables users to chat normally and upload PDFs to ask questions specifically about the content of the uploaded documents, making the chatbot highly context-aware and document-focused.
 
@@ -35,19 +35,21 @@ The diagram above illustrates the complete AWS infrastructure architecture deplo
 
 **Network Layer:**
 - **VPC (Virtual Private Cloud)**: Provides isolated network environment with CIDR block 10.0.0.0/16
-- **Public Subnets**: Distributed across multiple Availability Zones for high availability
+- **Public Subnets**: Host the EC2 for the Chatbot app.
 - **Internet Gateway**: Enables internet connectivity for resources in public subnets
 - **Route Tables**: Direct traffic between subnets and to the internet
 
 **Compute Layer:**
 - **EC2 Instance**: Ubuntu 22.04 LTS (t2.large) with pre-installed Miniconda3 and PostgreSQL 16
 - **Elastic IP**: Provides static public IP address for consistent external access
-- **Security Group**: Configured with minimal access (SSH port 22 and application port 8501)
+- **Security Group**: Configured with minimal access (SSH port 22 and streamlit front end port 8501)
 
 **Application Stack:**
 - **Miniconda3**: Python environment for data science and machine learning workloads
 - **PostgreSQL 16**: Database server for data persistence and analytics
-- **Custom Applications**: Ready to deploy on port 8501 for web-based interfaces
+- **Streamlit**: Ready to deploy on port 8501 for web-based interfaces
+- **FastAPI**: for handling backend logic.
+- **Chromadb**: for vectorized database and context-aware of the documents.
 
 **Security & Monitoring:**
 - **IAM Roles**: Least privilege access for EC2 instances
@@ -56,38 +58,6 @@ The diagram above illustrates the complete AWS infrastructure architecture deplo
 - **EBS Encryption**: Encrypted storage volumes for data protection
 
 This architecture follows AWS Well-Architected Framework principles, ensuring security, reliability, performance efficiency, cost optimization, and operational excellence.
-
-## AWS Well-Architected Framework Implementation
-
-### 1. Security Pillar
-- ✅ VPC with private networking
-- ✅ Security groups with minimal required access
-- ✅ IAM roles with least privilege
-- ✅ EBS encryption enabled
-- ✅ VPC Flow Logs for network monitoring
-- ✅ Systems Manager access for secure instance management
-
-### 2. Reliability Pillar
-- ✅ Multi-AZ subnet deployment
-- ✅ EBS-optimized instances
-- ✅ Automated recovery through user data scripts
-- ✅ Health check endpoint
-
-### 3. Performance Efficiency Pillar
-- ✅ GP3 EBS volumes for better performance
-- ✅ EBS-optimized instances
-- ✅ Right-sized instance type (t2.large)
-
-### 4. Cost Optimization Pillar
-- ✅ GP3 volumes (cost-effective storage)
-- ✅ Appropriate instance sizing
-- ✅ Resource tagging for cost tracking
-
-### 5. Operational Excellence Pillar
-- ✅ Infrastructure as Code (Terraform)
-- ✅ Modular architecture
-- ✅ CloudWatch monitoring
-- ✅ Automated deployment scripts
 
 ## Prerequisites
 
@@ -105,7 +75,8 @@ chmod 400 ~/.ssh/my-key-pair.pem
 
 1. **Clone and navigate to the project directory**
    ```bash
-   cd /home/ohammed/aws-terraform
+   git clone https://github.com/Mohammed78vr/chatbot-app-in-AWS.git
+   cd chatbot-app-in-AWS
    ```
 
 2. **Copy and customize variables**
@@ -133,12 +104,148 @@ chmod 400 ~/.ssh/my-key-pair.pem
    ```bash
    # SSH access (Ubuntu uses 'ubuntu' user by default)
    ssh -i ~/.ssh/your-key-pair.pem ubuntu@<public-ip>
-   
-   # Web application
-   curl http://<public-ip>:8501
-   curl http://<public-ip>:8501/health
    ```
 
+7.  **One you are connected to the EC2 instance**
+    Create a file named ```setup.sh```. Then, copy and paste the script:
+    - **PAT_token**: Your GitHub personal access token.
+    - **repo_url**: The URL of your GitHub repository (without https://).
+    - **branch_name**: The branch name to use on the EC2.
+    - **password**: The password that will be altred from the postgresSql database.
+
+    ```bash
+    #!/bin/bash
+
+    # Check if the correct number of arguments is provided
+    if [ $# -ne 4 ]; then
+    echo "Usage: $0 <PAT_token> <repo_url> <branch_name> <password>"
+    exit 1
+    fi
+
+    # Assign arguments to variables
+    PAT_TOKEN="$1"
+    REPO_URL="$2"
+    BRANCH_NAME="$3"
+    PASSWORD="$4"
+    REPO_NAME=$(basename "$REPO_URL" .git)
+    USER=$(whoami)
+    HOME_DIR=$(eval echo ~$USER)
+
+    # Set up PostgreSQL database
+    echo "Setting up database..."
+    sudo -u postgres psql -c "ALTER USER postgres PASSWORD '$PASSWORD'"
+    if ! sudo -u postgres psql -lqt | cut -d \| -f 1 | grep -qw project; then
+        sudo -u postgres psql -c "CREATE DATABASE project"
+    else
+        echo "Database 'project' already exists"
+    fi
+    sudo -u postgres psql -d project -c "CREATE TABLE IF NOT EXISTS advanced_chats (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    file_path TEXT NOT NULL,
+    last_update TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    pdf_path TEXT,
+    pdf_name TEXT,
+    pdf_uuid TEXT
+    );"
+
+    # Set up Conda environment
+    echo "Setting up conda environment..."
+    source "$HOME_DIR/miniconda3/etc/profile.d/conda.sh"
+    if ! conda env list | grep -q "^project "; then
+        conda create -y -n project python=3.11
+    fi
+
+    # Clone the repository
+    echo "Cloning repository..."
+    cd "$HOME_DIR"
+    if [ -d "$REPO_NAME" ]; then
+        echo "Directory $REPO_NAME already exists. Please remove it or choose a different repository."
+        exit 1
+    fi
+    export GITHUB_TOKEN="$PAT_TOKEN"
+    git clone -b "$BRANCH_NAME" "https://${GITHUB_TOKEN}@${REPO_URL}"
+    if [ $? -ne 0 ]; then
+        echo "Failed to clone repository"
+        exit 1
+    fi
+    cd "$REPO_NAME"
+
+    # Install requirements
+    echo "Installing requirements..."
+    if [ -f requirements.txt ]; then
+        "$HOME_DIR/miniconda3/envs/project/bin/pip" install -r requirements.txt
+    else
+        echo "No requirements.txt found"
+    fi
+
+    sudo -u $USER tee $HOME_DIR/$REPO_NAME/.env <<EOF
+    OPENAI_API_KEY=<OPENAI_API_KEY>
+    DB_NAME=project
+    DB_USER=postgres
+    DB_PASSWORD=$PASSWORD
+    DB_HOST=localhost
+    DB_PORT=5432
+    EOF
+
+    # Create systemd services
+    echo "Creating systemd services..."
+    cat <<EOF | sudo tee /etc/systemd/system/chromadb.service
+    [Unit]
+    Description=ChromaDB
+    After=network.target
+
+    [Service]
+    Type=simple
+    User=$USER
+    WorkingDirectory=$HOME_DIR/$REPO_NAME
+    ExecStart=$HOME_DIR/miniconda3/envs/project/bin/chroma run --path $HOME_DIR/$REPO_NAME/chroma_db
+    Restart=always
+
+    [Install]
+    WantedBy=multi-user.target
+    EOF
+
+    cat <<EOF | sudo tee /etc/systemd/system/backend.service
+    [Unit]
+    Description=backend
+    After=network.target
+
+    [Service]
+    Type=simple
+    User=$USER
+    WorkingDirectory=$HOME_DIR/$REPO_NAME
+    ExecStart=$HOME_DIR/miniconda3/envs/project/bin/uvicorn backend:app --reload --port 5000
+    Restart=always
+
+    [Install]
+    WantedBy=multi-user.target
+    EOF
+
+    cat <<EOF | sudo tee /etc/systemd/system/frontend.service
+    [Unit]
+    Description=Streamlit
+    After=network.target
+
+    [Service]
+    Type=simple
+    User=$USER
+    WorkingDirectory=$HOME_DIR/$REPO_NAME
+    ExecStart=$HOME_DIR/miniconda3/envs/project/bin/streamlit run chatbot.py
+    Restart=always
+
+    [Install]
+    WantedBy=multi-user.target
+    EOF
+
+    # Reload systemd and start services
+    echo "Reloading systemd and starting services..."
+    sudo systemctl daemon-reload
+    for service in chromadb backend frontend; do
+        sudo systemctl enable $service
+        sudo systemctl start $service
+    done
+    ```
 ## Configuration
 
 ### Required Variables
@@ -172,7 +279,6 @@ modules/
 - **CloudWatch Metrics**: CPU, memory, disk usage
 - **CloudWatch Logs**: System logs and application logs
 - **VPC Flow Logs**: Network traffic monitoring
-- **Health Check**: Available at `http://<public-ip>:8501/health`
 
 ## Cleanup
 
@@ -180,24 +286,3 @@ To destroy all resources:
 ```bash
 terraform destroy
 ```
-
-## Cost Estimation
-
-Use the [AWS Pricing Calculator](https://calculator.aws) for detailed cost estimates based on your usage patterns.
-
-## Support
-
-For issues or questions:
-1. Check AWS documentation
-2. Review Terraform AWS provider documentation
-3. Check CloudWatch logs for troubleshooting
-
-## Next Steps
-
-Consider implementing:
-- Application Load Balancer for high availability
-- Auto Scaling Groups for elasticity
-- RDS database for data persistence
-- CloudFront for content delivery
-- Route 53 for DNS management
-- AWS Backup for data protection

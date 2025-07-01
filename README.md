@@ -249,6 +249,27 @@ chmod 400 ~/.ssh/my-key-pair.pem
         sudo systemctl start $service
     done
     ```
+
+8.  **Check if the chromadb service is running**
+
+    ```bash
+    sudo systemctl status chromadb.service
+    ```
+
+9. **Verify if the frontend and backend services are running**:
+
+    ```bash
+    sudo systemctl status backend.service
+    ```
+    ```bash
+    sudo systemctl status frontend.service
+    ```
+10. **Access the Webapp using the public IP address**
+    use the external or public IP Address with the port 8501 to access the application
+    ```bash
+    External URL: http://<public_ip>:8501
+    ```
+
 ## Configuration
 
 ### Required Variables

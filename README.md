@@ -10,9 +10,7 @@ This project deploys a Retrieval-Augmented Generation (RAG) Chatbot application 
 - [Application Setup Script](#application-setup-script)
 - [Post-Deployment Verification](#post-deployment-verification)
 - [Configuration](#configuration)
-- [Module Structure](#module-structure)
-- [Security Considerations](#security-considerations)
-- [Monitoring and Logging](#monitoring-and-logging)
+- [Project Structure](#Project-Structure)
 - [Cleanup](#cleanup)
 
 ## Project Overview
@@ -334,19 +332,6 @@ After running the setup script, verify that all services are running properly:
 ├── chatbot.py                   # Streamlit frontend application
 └── requirements.txt             # Python dependencies
 ```
-
-## Security Considerations
-
-1. **SSH Access**: Consider restricting SSH access to specific IP ranges
-2. **Key Management**: Store private keys securely
-3. **Regular Updates**: Keep AMIs and packages updated
-4. **Monitoring**: Review CloudWatch logs and VPC Flow Logs regularly
-
-## Monitoring and Logging
-
-- **CloudWatch Metrics**: CPU, memory, disk usage
-- **CloudWatch Logs**: System logs and application logs
-- **VPC Flow Logs**: Network traffic monitoring
 
 ## Cleanup
 

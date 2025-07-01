@@ -1,0 +1,31 @@
+# Project Configuration
+project_name = "chatbot"
+environment  = "dev"
+
+# AWS Configuration
+aws_region = "us-east-1"
+
+# Network Configuration
+vpc_cidr              = "10.0.0.0/16"
+public_subnet_cidr    = "10.0.1.0/24"
+private_subnet_cidr   = "10.0.2.0/24"
+private_subnet_2_cidr = "10.0.3.0/24"
+
+# EC2 Configuration
+instance_type = "t2.large"
+key_name      = "your-key-pair-name"  # Replace with your actual key pair name
+
+# S3 Configuration
+s3_bucket_name = "your-unique-chatbot-bucket-name"  # Replace with a unique bucket name
+
+# Database Configuration
+db_name     = "chatbotdb"
+db_username = "dbadmin"
+db_password = "your-secure-password"  # Replace with a secure password
+
+# Tags
+common_tags = {
+  Project     = "ChatbotApp"
+  Environment = "dev"
+  Owner       = "YourName"
+}

@@ -49,10 +49,7 @@ vectorstore = Chroma(
             embedding_function=embedding_function,
 )
 
-s3_client = boto3.client('s3',
-    aws_access_key_id=os.environ.get('AWS_ACCESS_KEY_ID'),
-    aws_secret_access_key=os.environ.get('AWS_SECRET_ACCESS_KEY')
-)
+s3_client = boto3.client('s3')
 bucket_name = os.environ.get('AWS_BUCKET_NAME')
 
 app = FastAPI()
@@ -318,5 +315,3 @@ async def rag_chat(request: RAGChatRequest):
 
     # Use StreamingResponse to return
     return StreamingResponse(stream_response(), media_type="text/plain")
-
-

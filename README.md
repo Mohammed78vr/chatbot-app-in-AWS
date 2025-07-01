@@ -2,6 +2,19 @@
 
 This project deploys a Retrieval-Augmented Generation (RAG) Chatbot application on AWS using Terraform for Infrastructure as Code (IaC).
 
+## Table of Contents
+- [Project Overview](#project-overview)
+- [Architecture Overview](#architecture-overview)
+- [Prerequisites](#prerequisites)
+- [Quick Start](#quick-start)
+- [Application Setup Script](#application-setup-script)
+- [Post-Deployment Verification](#post-deployment-verification)
+- [Configuration](#configuration)
+- [Module Structure](#module-structure)
+- [Security Considerations](#security-considerations)
+- [Monitoring and Logging](#monitoring-and-logging)
+- [Cleanup](#cleanup)
+
 ## Project Overview
 
 The chatbot uses:
@@ -73,6 +86,8 @@ chmod 400 ~/.ssh/my-key-pair.pem
 
 ## Quick Start
 
+### Infrastructure Deployment
+
 1. **Clone and navigate to the project directory**
    ```bash
    git clone https://github.com/Mohammed78vr/chatbot-app-in-AWS.git
@@ -106,169 +121,188 @@ chmod 400 ~/.ssh/my-key-pair.pem
    ssh -i ~/.ssh/your-key-pair.pem ubuntu@<public-ip>
    ```
 
-7.  **One you are connected to the EC2 instance**
-    Create a file named ```setup.sh```. Then, copy and paste the script.
-    below. After that, run the scripts. The scripts take 4 arguments:
-    - **PAT_token**: Your GitHub personal access token.
-    - **repo_url**: The URL of your GitHub repository (without https://).
-    - **branch_name**: The branch name to use on the EC2.
-    - **password**: The password that will be altred from the postgresSql database.
+### Application Setup
 
-    > Note: You need to add your OPENAI API KEY in the ```OPENAI_API_KEY``` line.
+7. **Once you are connected to the EC2 instance**
+   
+   Create a file named `setup.sh`, copy the script from the [Application Setup Script](#application-setup-script) section below, and run it with the required arguments:
+   
+   ```bash
+   chmod +x setup.sh
+   ./setup.sh <PAT_token> <repo_url> <branch_name> <password>
+   ```
+   
+   **Script Arguments:**
+   - **PAT_token**: Your GitHub personal access token
+   - **repo_url**: The URL of your GitHub repository (without https://)
+   - **branch_name**: The branch name to use on the EC2
+   - **password**: The password that will be set for the PostgreSQL database
+   
+   > **Important**: You need to add your OpenAI API key in the `OPENAI_API_KEY` line within the script.
 
-    ```bash
-    #!/bin/bash
+## Application Setup Script
 
-    # Check if the correct number of arguments is provided
-    if [ $# -ne 4 ]; then
-    echo "Usage: $0 <PAT_token> <repo_url> <branch_name> <password>"
+The following script automates the complete application setup on your EC2 instance. Create a file named `setup.sh` and copy this script:
+
+```bash
+#!/bin/bash
+
+# Check if the correct number of arguments is provided
+if [ $# -ne 4 ]; then
+echo "Usage: $0 <PAT_token> <repo_url> <branch_name> <password>"
+exit 1
+fi
+
+# Assign arguments to variables
+PAT_TOKEN="$1"
+REPO_URL="$2"
+BRANCH_NAME="$3"
+PASSWORD="$4"
+REPO_NAME=$(basename "$REPO_URL" .git)
+USER=$(whoami)
+HOME_DIR=$(eval echo ~$USER)
+
+# Set up PostgreSQL database
+echo "Setting up database..."
+sudo -u postgres psql -c "ALTER USER postgres PASSWORD '$PASSWORD'"
+if ! sudo -u postgres psql -lqt | cut -d \| -f 1 | grep -qw project; then
+    sudo -u postgres psql -c "CREATE DATABASE project"
+else
+    echo "Database 'project' already exists"
+fi
+sudo -u postgres psql -d project -c "CREATE TABLE IF NOT EXISTS advanced_chats (
+id TEXT PRIMARY KEY,
+name TEXT NOT NULL,
+file_path TEXT NOT NULL,
+last_update TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+pdf_path TEXT,
+pdf_name TEXT,
+pdf_uuid TEXT
+);"
+
+# Set up Conda environment
+echo "Setting up conda environment..."
+source "$HOME_DIR/miniconda3/etc/profile.d/conda.sh"
+if ! conda env list | grep -q "^project "; then
+    conda create -y -n project python=3.11
+fi
+
+# Clone the repository
+echo "Cloning repository..."
+cd "$HOME_DIR"
+if [ -d "$REPO_NAME" ]; then
+    echo "Directory $REPO_NAME already exists. Please remove it or choose a different repository."
     exit 1
-    fi
+fi
+export GITHUB_TOKEN="$PAT_TOKEN"
+git clone -b "$BRANCH_NAME" "https://${GITHUB_TOKEN}@${REPO_URL}"
+if [ $? -ne 0 ]; then
+    echo "Failed to clone repository"
+    exit 1
+fi
+cd "$REPO_NAME"
 
-    # Assign arguments to variables
-    PAT_TOKEN="$1"
-    REPO_URL="$2"
-    BRANCH_NAME="$3"
-    PASSWORD="$4"
-    REPO_NAME=$(basename "$REPO_URL" .git)
-    USER=$(whoami)
-    HOME_DIR=$(eval echo ~$USER)
+# Install requirements
+echo "Installing requirements..."
+if [ -f requirements.txt ]; then
+    "$HOME_DIR/miniconda3/envs/project/bin/pip" install -r requirements.txt
+else
+    echo "No requirements.txt found"
+fi
 
-    # Set up PostgreSQL database
-    echo "Setting up database..."
-    sudo -u postgres psql -c "ALTER USER postgres PASSWORD '$PASSWORD'"
-    if ! sudo -u postgres psql -lqt | cut -d \| -f 1 | grep -qw project; then
-        sudo -u postgres psql -c "CREATE DATABASE project"
-    else
-        echo "Database 'project' already exists"
-    fi
-    sudo -u postgres psql -d project -c "CREATE TABLE IF NOT EXISTS advanced_chats (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    file_path TEXT NOT NULL,
-    last_update TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    pdf_path TEXT,
-    pdf_name TEXT,
-    pdf_uuid TEXT
-    );"
+sudo -u $USER tee $HOME_DIR/$REPO_NAME/.env <<EOF
+OPENAI_API_KEY=<OPENAI_API_KEY>
+DB_NAME=project
+DB_USER=postgres
+DB_PASSWORD=$PASSWORD
+DB_HOST=localhost
+DB_PORT=5432
+EOF
 
-    # Set up Conda environment
-    echo "Setting up conda environment..."
-    source "$HOME_DIR/miniconda3/etc/profile.d/conda.sh"
-    if ! conda env list | grep -q "^project "; then
-        conda create -y -n project python=3.11
-    fi
+# Create systemd services
+echo "Creating systemd services..."
+cat <<EOF | sudo tee /etc/systemd/system/chromadb.service
+[Unit]
+Description=ChromaDB
+After=network.target
 
-    # Clone the repository
-    echo "Cloning repository..."
-    cd "$HOME_DIR"
-    if [ -d "$REPO_NAME" ]; then
-        echo "Directory $REPO_NAME already exists. Please remove it or choose a different repository."
-        exit 1
-    fi
-    export GITHUB_TOKEN="$PAT_TOKEN"
-    git clone -b "$BRANCH_NAME" "https://${GITHUB_TOKEN}@${REPO_URL}"
-    if [ $? -ne 0 ]; then
-        echo "Failed to clone repository"
-        exit 1
-    fi
-    cd "$REPO_NAME"
+[Service]
+Type=simple
+User=$USER
+WorkingDirectory=$HOME_DIR/$REPO_NAME
+ExecStart=$HOME_DIR/miniconda3/envs/project/bin/chroma run --path $HOME_DIR/$REPO_NAME/chroma_db
+Restart=always
 
-    # Install requirements
-    echo "Installing requirements..."
-    if [ -f requirements.txt ]; then
-        "$HOME_DIR/miniconda3/envs/project/bin/pip" install -r requirements.txt
-    else
-        echo "No requirements.txt found"
-    fi
+[Install]
+WantedBy=multi-user.target
+EOF
 
-    sudo -u $USER tee $HOME_DIR/$REPO_NAME/.env <<EOF
-    OPENAI_API_KEY=<OPENAI_API_KEY>
-    DB_NAME=project
-    DB_USER=postgres
-    DB_PASSWORD=$PASSWORD
-    DB_HOST=localhost
-    DB_PORT=5432
-    EOF
+cat <<EOF | sudo tee /etc/systemd/system/backend.service
+[Unit]
+Description=backend
+After=network.target
 
-    # Create systemd services
-    echo "Creating systemd services..."
-    cat <<EOF | sudo tee /etc/systemd/system/chromadb.service
-    [Unit]
-    Description=ChromaDB
-    After=network.target
+[Service]
+Type=simple
+User=$USER
+WorkingDirectory=$HOME_DIR/$REPO_NAME
+ExecStart=$HOME_DIR/miniconda3/envs/project/bin/uvicorn backend:app --reload --port 5000
+Restart=always
 
-    [Service]
-    Type=simple
-    User=$USER
-    WorkingDirectory=$HOME_DIR/$REPO_NAME
-    ExecStart=$HOME_DIR/miniconda3/envs/project/bin/chroma run --path $HOME_DIR/$REPO_NAME/chroma_db
-    Restart=always
+[Install]
+WantedBy=multi-user.target
+EOF
 
-    [Install]
-    WantedBy=multi-user.target
-    EOF
+cat <<EOF | sudo tee /etc/systemd/system/frontend.service
+[Unit]
+Description=Streamlit
+After=network.target
 
-    cat <<EOF | sudo tee /etc/systemd/system/backend.service
-    [Unit]
-    Description=backend
-    After=network.target
+[Service]
+Type=simple
+User=$USER
+WorkingDirectory=$HOME_DIR/$REPO_NAME
+ExecStart=$HOME_DIR/miniconda3/envs/project/bin/streamlit run chatbot.py
+Restart=always
 
-    [Service]
-    Type=simple
-    User=$USER
-    WorkingDirectory=$HOME_DIR/$REPO_NAME
-    ExecStart=$HOME_DIR/miniconda3/envs/project/bin/uvicorn backend:app --reload --port 5000
-    Restart=always
+[Install]
+WantedBy=multi-user.target
+EOF
 
-    [Install]
-    WantedBy=multi-user.target
-    EOF
+# Reload systemd and start services
+echo "Reloading systemd and starting services..."
+sudo systemctl daemon-reload
+for service in chromadb backend frontend; do
+    sudo systemctl enable $service
+    sudo systemctl start $service
+done
+```
 
-    cat <<EOF | sudo tee /etc/systemd/system/frontend.service
-    [Unit]
-    Description=Streamlit
-    After=network.target
+## Post-Deployment Verification
 
-    [Service]
-    Type=simple
-    User=$USER
-    WorkingDirectory=$HOME_DIR/$REPO_NAME
-    ExecStart=$HOME_DIR/miniconda3/envs/project/bin/streamlit run chatbot.py
-    Restart=always
+After running the setup script, verify that all services are running properly:
 
-    [Install]
-    WantedBy=multi-user.target
-    EOF
+1. **Check ChromaDB service status**
+   ```bash
+   sudo systemctl status chromadb.service
+   ```
 
-    # Reload systemd and start services
-    echo "Reloading systemd and starting services..."
-    sudo systemctl daemon-reload
-    for service in chromadb backend frontend; do
-        sudo systemctl enable $service
-        sudo systemctl start $service
-    done
-    ```
+2. **Verify backend service status**
+   ```bash
+   sudo systemctl status backend.service
+   ```
 
-8.  **Check if the chromadb service is running**
+3. **Verify frontend service status**
+   ```bash
+   sudo systemctl status frontend.service
+   ```
 
-    ```bash
-    sudo systemctl status chromadb.service
-    ```
-
-9. **Verify if the frontend and backend services are running**:
-
-    ```bash
-    sudo systemctl status backend.service
-    ```
-    ```bash
-    sudo systemctl status frontend.service
-    ```
-10. **Access the Webapp using the public IP address**
-    use the external or public IP Address with the port 8501 to access the application
-    ```bash
-    External URL: http://<public_ip>:8501
-    ```
+4. **Access the web application**
+   
+   Use the public IP address with port 8501 to access the application:
+   ```bash
+   External URL: http://<public_ip>:8501
+   ```
 
 ## Configuration
 

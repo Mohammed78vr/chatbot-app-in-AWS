@@ -6,10 +6,12 @@ This project deploys a Retrieval-Augmented Generation (RAG) Chatbot application 
 - [Project Overview](#project-overview)
 - [Architecture Overview](#architecture-overview)
 - [Prerequisites](#prerequisites)
+- [Configuration](#configuration)
 - [Quick Start](#quick-start)
 - [Application Setup Script](#application-setup-script)
+- [Environment Variables Setup](#environment-variables-setup)
+- [Service Restart](#service-restart)
 - [Post-Deployment Verification](#post-deployment-verification)
-- [Configuration](#configuration)
 - [Project Structure](#Project-Structure)
 - [Cleanup](#cleanup)
 
@@ -34,7 +36,7 @@ The infrastructure includes:
 - **Internet Gateway** for internet connectivity
 - **Security Groups** with least privilege access
 - **EC2 instance** (t2.large) running Ubuntu 22.04 LTS
-- **RDS PostgreSQL** database in private subnet to store metadata like chat id, pdf path.
+- **RDS PostgreSQL** database in private subnet to store metadata like chat id, pdf file path. etc...
 - **S3 bucket** for storing chat history and PDF files
 
 ### Architecture Diagram
@@ -86,6 +88,43 @@ This architecture follows AWS Well-Architected Framework principles, ensuring se
 ```bash
 aws ec2 create-key-pair --key-name my-key-pair --query 'KeyMaterial' --output text > ~/.ssh/my-key-pair.pem
 chmod 400 ~/.ssh/my-key-pair.pem
+```
+
+## Configuration
+
+### Required Variables
+Before deploying the infrastructure, you need to configure the following required variables in your `terraform.tfvars` file:
+
+- `key_name`: Your AWS key pair name for EC2 access
+- `s3_bucket_name`: Unique name for the S3 bucket (must be globally unique)
+- `db_password`: Password for the RDS PostgreSQL database
+
+### Optional Variables
+The following variables have default values but can be customized:
+
+- `project_name`: Project name (default: "chatbot")
+- `environment`: Environment name (default: "dev")
+- `aws_region`: AWS region for deployment (default: "us-east-1")
+- `instance_type`: EC2 instance type (default: "t2.large")
+- `vpc_cidr`: VPC CIDR block (default: "10.0.0.0/16")
+- `public_subnet_cidr`: Public subnet CIDR (default: "10.0.1.0/24")
+- `private_subnet_cidr`: First private subnet CIDR (default: "10.0.2.0/24")
+- `private_subnet_2_cidr`: Second private subnet CIDR (default: "10.0.3.0/24")
+- `db_name`: Database name (default: "chatbotdb")
+- `db_username`: Database username (default: "dbadmin")
+
+### Example terraform.tfvars
+```hcl
+# Required variables
+key_name        = "my-key-pair"
+s3_bucket_name  = "my-unique-chatbot-bucket-12345"
+db_password     = "your-secure-password"
+
+# Optional variables (uncomment to override defaults)
+# project_name    = "my-chatbot"
+# environment     = "production"
+# aws_region      = "us-west-2"
+# instance_type   = "t3.large"
 ```
 
 ## Quick Start
@@ -288,6 +327,8 @@ done
 echo "Setup completed successfully"
 ```
 
+## Environment Variables Setup
+
 8. **Create Environment Variables File**
    
    After running the setup script, create a `.env` file in your project directory with the required environment variables:
@@ -309,6 +350,8 @@ echo "Setup completed successfully"
    CHROMA_HOST=localhost
    CHROMA_PORT=8000
    ```
+
+## Service Restart
 
 9. **Restart Backend and Frontend Services**
    
@@ -344,18 +387,6 @@ After running the setup script, verify that all services are running properly:
    ```bash
    External URL: http://<public_ip>:8501
    ```
-
-## Configuration
-
-### Required Variables
-- `key_pair_name`: Your AWS key pair name
-- `aws_region`: AWS region for deployment
-
-### Optional Variables
-- `project_name`: Project name (default: "terraform-aws-project")
-- `environment`: Environment name (default: "dev")
-- `instance_type`: EC2 instance type (default: "t2.large")
-- `vpc_cidr`: VPC CIDR block (default: "10.0.0.0/16")
 
 ## Project Structure
 

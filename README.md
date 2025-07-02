@@ -185,7 +185,7 @@ db_password     = "your-secure-password"
    
    ```bash
    chmod +x setup.sh
-   bash setup.sh <PAT_token> <repo_url> <branch_name> <db_host> <target_db> <db_username> <db_password>
+   bash setup.sh <PAT_token> <repo_url> <branch_name> <db_host> <target_db> <db_username> <db_password> <secret_name> <region>
    ```
    
    **Script Arguments:**
@@ -195,7 +195,10 @@ db_password     = "your-secure-password"
    - **db_host**: The database host (e.g., [dbteststage6.postgres.database.azure.com](http://dbteststage6.postgres.database.azure.com/)).
    - **target_db**: The name of the database that was created.
    - **db_username**: The username for the database server.
-   - **password**: The password for the database server.
+   - **db_password**: The password for the database server.
+   - **secret_name**: The name of the AWS Secrets Manager secret.
+   - **region**: The AWS region where the secret is stored.
+
 
 
 ## Application Setup Script
@@ -381,17 +384,6 @@ echo "Setup completed successfully"
    - `SECRET_NAME`: The name of the AWS Secrets Manager secret (automatically set)
    - `REGION_NAME`: The AWS region (automatically set)
 
-## Service Restart
-
-9. **Restart Backend and Frontend Services**
-   
-   After creating the `.env` file, restart the backend and frontend services to load the new environment variables:
-   
-   ```bash
-   sudo systemctl restart backend.service
-   sudo systemctl restart frontend.service
-   ```
-
 ## GitHub Actions CI/CD Integration
 
 This project includes GitHub Actions integration for automated deployment and application management. The CI/CD pipeline enables:
@@ -412,8 +404,8 @@ This project includes GitHub Actions integration for automated deployment and ap
 AWS_ACCESS_KEY_ID          # AWS access key for GitHub Actions
 AWS_SECRET_ACCESS_KEY      # AWS secret key for GitHub Actions
 AWS_REGION                 # AWS region (e.g., us-east-1)
-EC2_INSTANCE_ID           # EC2 instance ID for deployment target
-SECRET_NAME               # AWS Secrets Manager secret name
+EC2_INSTANCE_ID            # EC2 instance ID for deployment target
+TOKEN                      # GitHub Personal Access Token
 ```
 
 ### Workflow Capabilities:

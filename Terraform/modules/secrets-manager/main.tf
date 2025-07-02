@@ -14,7 +14,7 @@ resource "aws_secretsmanager_secret_version" "chatbot_secrets_version" {
     "PROJ-DB-NAME"         = var.db_name
     "PROJ-DB-USER"         = var.db_username
     "PROJ-DB-PASSWORD"     = var.db_password
-    "PROJ-DB-HOST"         = var.db_host
+    "PROJ-DB-HOST"         = split(":", var.db_host)[0]  # Remove port from host
     "PROJ-DB-PORT"         = var.db_port
     "PROJ-OPENAI-API-KEY"  = var.openai_api_key
     "PROJ-S3-BUCKET-NAME"  = var.s3_bucket_name

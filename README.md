@@ -179,7 +179,7 @@ db_password     = "your-secure-password"
    - **PAT_token**: Your GitHub personal access token
    - **repo_url**: The URL of your GitHub repository (without https://)
    - **branch_name**: The branch name to use on the EC2
-   - **db_host**: The database host (e.g., [dbteststage6.postgres.database.azure.com](http://dbteststage6.postgres.database.azure.com/)).
+   - **db_host**: The database host (e.g., [***.us-east-1.rds.amazonaws.com](http://dbteststage6.postgres.database.azure.com/)).
    - **target_db**: The name of the database that was created.
    - **db_username**: The username for the database server.
    - **password**: The password for the database server.

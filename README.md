@@ -4,6 +4,7 @@ This project deploys a Retrieval-Augmented Generation (RAG) Chatbot application 
 
 ## Table of Contents
 - [Project Overview](#project-overview)
+- [Project Structure](#project-structure)
 - [Architecture Overview](#architecture-overview)
 - [Prerequisites](#prerequisites)
 - [Configuration](#configuration)
@@ -12,7 +13,6 @@ This project deploys a Retrieval-Augmented Generation (RAG) Chatbot application 
 - [Environment Variables Setup](#environment-variables-setup)
 - [Post-Deployment Verification](#post-deployment-verification)
 - [GitHub Actions CI/CD Integration](#github-actions-cicd-integration)
-- [Project Structure](#project-structure)
 - [Cleanup](#cleanup)
 
 ## Project Overview
@@ -28,6 +28,35 @@ The chatbot uses:
 - **PostgreSQL** for structured data storage
 
 It enables users to chat normally and upload PDFs to ask questions specifically about the content of the uploaded documents, making the chatbot highly context-aware and document-focused.
+
+## Project Structure
+
+```
+├── .github/
+│   └── workflows/
+│       └── deploy.yml           # GitHub Actions CI/CD pipeline
+├── Terraform/                   # Terraform infrastructure code
+│   ├── modules/
+│   │   ├── vpc/                 # VPC, subnets, IGW, routing
+│   │   ├── ec2/                 # EC2 instances, IAM roles
+│   │   ├── rds/                 # RDS PostgreSQL database
+│   │   ├── s3/                  # S3 bucket for storage
+│   │   ├── iam/                 # IAM roles and policies
+│   │   └── secrets-manager/     # AWS Secrets Manager for configuration
+│   ├── main.tf                  # Main Terraform configuration
+│   ├── variables.tf             # Variable definitions
+│   ├── outputs.tf               # Output definitions
+│   └── terraform.tfvars.example # Example variables file
+├── imgs/
+│   └── stage-3.png              # Architecture diagram
+├── update_app.sh                # Application update script for CI/CD
+├── .gitignore                   # Git ignore file
+├── LICENSE                      # Project license
+├── README.md                    # Project documentation
+├── backend.py                   # FastAPI backend application
+├── chatbot.py                   # Streamlit frontend application
+└── requirements.txt             # Python dependencies
+```
 
 ## Architecture Overview
 
@@ -412,7 +441,7 @@ After running the setup script, verify that all services are running properly:
 
 ## GitHub Actions CI/CD Integration
 
-This project includes GitHub Actions integration for automated deployment and application management. The CI/CD pipeline automatically deploys updates when code is pushed to the `stage-3` branch.
+This project includes GitHub Actions integration for automated deployment and application management. The CI/CD pipeline automatically deploys updates when code is pushed to the configured branch (currently set to `stage-3`).
 
 ### Pipeline Overview:
 The workflow (`deploy.yml`) performs the following steps:
@@ -425,7 +454,7 @@ The workflow (`deploy.yml`) performs the following steps:
 
 ### Deployment Process:
 The deployment uses AWS Systems Manager (SSM) to remotely execute the `update_app.sh` script on your EC2 instance, which:
-- Fetches the latest code from the `stage-3` branch
+- Fetches the latest code from the configured branch
 - Performs a hard reset to ensure clean deployment
 - Updates Python dependencies using the conda environment
 - Restarts backend and frontend services
@@ -436,6 +465,7 @@ The deployment uses AWS Systems Manager (SSM) to remotely execute the `update_ap
 2. **EC2 SSM Access**: Ensure EC2 instance has proper IAM roles for SSM access (automatically configured by Terraform)
 3. **Repository Secrets**: Set up required secrets in your GitHub repository
 4. **Update Script**: Ensure `update_app.sh` is present in the EC2 instance at `/home/ubuntu/chatbot-app-in-AWS/`
+5. **Branch Configuration**: Update the workflow file to target your desired branch
 
 ### Required GitHub Secrets:
 ```
@@ -446,9 +476,18 @@ EC2_INSTANCE_ID            # EC2 instance ID for deployment target
 TOKEN                      # GitHub Personal Access Token for repository access
 ```
 
+### Workflow Configuration:
+To change the target branch for deployment, update the `deploy.yml` file:
+```yaml
+on:
+  push:
+    branches:
+      - your-branch-name  # Change this to your desired branch
+```
+
 ### Workflow Trigger:
 The CI/CD pipeline is automatically triggered when:
-- **Push to stage-3 branch**: Automatic deployment to the EC2 instance
+- **Push to configured branch**: Automatic deployment to the EC2 instance (default: `stage-3`)
 - The workflow includes basic testing and dependency management
 - Failed deployments will show in the GitHub Actions tab for troubleshooting
 
@@ -466,31 +505,6 @@ The deployment script automatically:
 - Verify services are running: `sudo systemctl status backend frontend`
 
 This automation ensures consistent deployments and reduces manual intervention while maintaining application availability.
-
-## Project Structure
-
-```
-├── Terraform/                   # Terraform infrastructure code
-│   ├── modules/
-│   │   ├── vpc/                 # VPC, subnets, IGW, routing
-│   │   ├── ec2/                 # EC2 instances, IAM roles
-│   │   ├── rds/                 # RDS PostgreSQL database
-│   │   ├── s3/                  # S3 bucket for storage
-│   │   ├── iam/                 # IAM roles and policies
-│   │   └── secrets-manager/     # AWS Secrets Manager for configuration
-│   ├── main.tf                  # Main Terraform configuration
-│   ├── variables.tf             # Variable definitions
-│   ├── outputs.tf               # Output definitions
-│   └── terraform.tfvars.example # Example variables file
-├── imgs/
-│   └── Chatbot-stage3.drawio.png # Architecture diagram
-├── .gitignore                   # Git ignore file
-├── LICENSE                      # Project license
-├── README.md                    # Project documentation
-├── backend.py                   # FastAPI backend application
-├── chatbot.py                   # Streamlit frontend application
-└── requirements.txt             # Python dependencies
-```
 
 ## Cleanup
 

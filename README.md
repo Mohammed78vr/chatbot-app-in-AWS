@@ -10,9 +10,9 @@ This project deploys a Retrieval-Augmented Generation (RAG) Chatbot application 
 - [Quick Start](#quick-start)
 - [Application Setup Script](#application-setup-script)
 - [Environment Variables Setup](#environment-variables-setup)
-- [Service Restart](#service-restart)
 - [Post-Deployment Verification](#post-deployment-verification)
-- [Project Structure](#Project-Structure)
+- [GitHub Actions CI/CD Integration](#github-actions-cicd-integration)
+- [Project Structure](#project-structure)
 - [Cleanup](#cleanup)
 
 ## Project Overview
@@ -384,46 +384,6 @@ echo "Setup completed successfully"
    - `SECRET_NAME`: The name of the AWS Secrets Manager secret (automatically set)
    - `REGION_NAME`: The AWS region (automatically set)
 
-## GitHub Actions CI/CD Integration
-
-This project includes GitHub Actions integration for automated deployment and application management. The CI/CD pipeline enables:
-
-### Features:
-- **Automated Application Deployment**: Deploy application updates without manual intervention
-- **Environment Management**: Manage different environments (dev, staging, production)
-- **Secure Credential Management**: Use GitHub Secrets for sensitive information
-- **Remote Execution**: Execute commands on EC2 instances via AWS Systems Manager (SSM)
-
-### Prerequisites for GitHub Actions:
-1. **AWS Credentials**: Configure AWS access keys in GitHub repository secrets
-2. **EC2 Access**: Ensure EC2 instance has proper IAM roles for SSM access
-3. **Repository Secrets**: Set up required secrets in your GitHub repository
-
-### Required GitHub Secrets:
-```
-AWS_ACCESS_KEY_ID          # AWS access key for GitHub Actions
-AWS_SECRET_ACCESS_KEY      # AWS secret key for GitHub Actions
-AWS_REGION                 # AWS region (e.g., us-east-1)
-EC2_INSTANCE_ID            # EC2 instance ID for deployment target
-TOKEN                      # GitHub Personal Access Token
-```
-
-### Workflow Capabilities:
-- **Application Updates**: Automatically pull latest code and restart services
-- **Dependency Management**: Update Python packages and system dependencies
-- **Service Management**: Start, stop, and restart application services
-- **Health Checks**: Verify application status after deployment
-- **Rollback Support**: Ability to rollback to previous versions if needed
-
-### Usage:
-The GitHub Actions workflows can be triggered by:
-- **Push to main branch**: Automatic deployment to production
-- **Pull request**: Run tests and validation
-- **Manual dispatch**: On-demand deployment with custom parameters
-- **Scheduled runs**: Regular maintenance and updates
-
-This automation reduces manual deployment overhead and ensures consistent, reliable application updates across your infrastructure.
-
 ## Post-Deployment Verification
 
 After running the setup script, verify that all services are running properly:
@@ -449,6 +409,63 @@ After running the setup script, verify that all services are running properly:
    ```bash
    External URL: http://<public_ip>:8501
    ```
+
+## GitHub Actions CI/CD Integration
+
+This project includes GitHub Actions integration for automated deployment and application management. The CI/CD pipeline automatically deploys updates when code is pushed to the `stage-3` branch.
+
+### Pipeline Overview:
+The workflow (`deploy.yml`) performs the following steps:
+1. **Code Checkout**: Retrieves the latest code from the repository
+2. **Python Environment Setup**: Sets up Python 3.11 with pip caching
+3. **Dependency Installation**: Installs requirements from `requirements.txt`
+4. **Testing**: Runs application tests (placeholder for actual tests)
+5. **AWS Configuration**: Configures AWS credentials for deployment
+6. **EC2 Deployment**: Uses AWS SSM to execute the update script on the target EC2 instance
+
+### Deployment Process:
+The deployment uses AWS Systems Manager (SSM) to remotely execute the `update_app.sh` script on your EC2 instance, which:
+- Fetches the latest code from the `stage-3` branch
+- Performs a hard reset to ensure clean deployment
+- Updates Python dependencies using the conda environment
+- Restarts backend and frontend services
+- Performs basic health checks on the services
+
+### Prerequisites for GitHub Actions:
+1. **AWS Credentials**: Configure AWS access keys in GitHub repository secrets
+2. **EC2 SSM Access**: Ensure EC2 instance has proper IAM roles for SSM access (automatically configured by Terraform)
+3. **Repository Secrets**: Set up required secrets in your GitHub repository
+4. **Update Script**: Ensure `update_app.sh` is present in the EC2 instance at `/home/ubuntu/chatbot-app-in-AWS/`
+
+### Required GitHub Secrets:
+```
+AWS_ACCESS_KEY_ID          # AWS access key for GitHub Actions
+AWS_SECRET_ACCESS_KEY      # AWS secret key for GitHub Actions  
+AWS_REGION                 # AWS region (e.g., us-east-1)
+EC2_INSTANCE_ID            # EC2 instance ID for deployment target
+TOKEN                      # GitHub Personal Access Token for repository access
+```
+
+### Workflow Trigger:
+The CI/CD pipeline is automatically triggered when:
+- **Push to stage-3 branch**: Automatic deployment to the EC2 instance
+- The workflow includes basic testing and dependency management
+- Failed deployments will show in the GitHub Actions tab for troubleshooting
+
+### Service Management:
+The deployment script automatically:
+- Updates application code to the latest version
+- Installs/updates Python dependencies
+- Restarts the `backend` service (FastAPI on port 5000)
+- Restarts the `frontend` service (Streamlit on port 8501)
+- Provides basic health check feedback
+
+### Monitoring Deployment:
+- Check GitHub Actions tab for deployment status
+- Monitor EC2 instance logs: `sudo journalctl -u backend -f` and `sudo journalctl -u frontend -f`
+- Verify services are running: `sudo systemctl status backend frontend`
+
+This automation ensures consistent deployments and reduces manual intervention while maintaining application availability.
 
 ## Project Structure
 

@@ -1,0 +1,47 @@
+# Required variables
+key_name        = "my-key-pair"
+s3_bucket_name  = "my-unique-chatbot-bucket-12345"
+db_password     = "your-secure-password"
+
+# Network configuration
+# vpc_cidr             = "10.0.0.0/16"
+# public_subnet_cidr   = "10.0.1.0/24"  # Public subnet in AZ1 (for ALB)
+# public_subnet_2_cidr = "10.0.6.0/24"  # Public subnet in AZ2 (for ALB)
+# private_subnet_cidr  = "10.0.2.0/24"  # ChromaDB subnet
+# private_subnet_2_cidr = "10.0.3.0/24" # RDS subnet
+# private_subnet_3_cidr = "10.0.4.0/24" # ASG subnet (AZ1)
+# private_subnet_4_cidr = "10.0.5.0/24" # ASG subnet (AZ2)
+
+# Instance types
+# chromadb_instance_type = "t3.large"
+# app_instance_type      = "t3.medium"
+
+# Project metadata
+# project_name    = "my-chatbot"
+# environment     = "production"
+# aws_region      = "us-west-2"
+
+# Database configuration
+# db_name         = "chatbotdb"
+# db_username     = "dbadmin"
+
+# Secrets and API keys
+# secret_name     = "my-chatbot-secrets"
+# openai_api_key  = "placeholder-openai-key"  # Will be updated manually in AWS Secrets Manager
+
+# ChromaDB configuration
+# chromadb_port   = "8000"
+
+# Auto Scaling Group configuration
+# custom_ami_id        = ""  # Provide your custom AMI ID if you have one
+# asg_min_size         = 1
+# asg_max_size         = 3
+# asg_desired_capacity = 2
+
+# Common tags (optional)
+# common_tags = {
+#   Project     = "ChatbotApp"
+#   Environment = "dev"
+#   Owner       = "DevOps"
+#   ManagedBy   = "Terraform"
+# }

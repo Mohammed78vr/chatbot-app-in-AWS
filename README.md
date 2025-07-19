@@ -9,7 +9,10 @@ This project deploys a Retrieval-Augmented Generation (RAG) Chatbot application 
 - [Prerequisites](#prerequisites)
 - [Configuration](#configuration)
 - [Quick Start](#quick-start)
-- [Application Setup Script](#application-setup-script)
+- [Setup Scripts](#setup-scripts)
+  - [ChromaDB Setup Script](#chromadb-setup-script)
+  - [Frontend/Backend Setup Script](#frontendbackend-setup-script)
+  - [Creating AMI for Auto Scaling Group](#creating-ami-for-auto-scaling-group)
 - [Environment Variables Setup](#environment-variables-setup)
 - [Post-Deployment Verification](#post-deployment-verification)
 - [GitHub Actions CI/CD Integration](#github-actions-cicd-integration)
@@ -223,66 +226,342 @@ db_password     = "your-secure-password"
    # Edit terraform.tfvars with your values
    ```
 
-3. **Initialize Terraform**
+3. **Create a custom AMI for the Auto Scaling Group**
+   - Follow the instructions in the [Creating AMI for Auto Scaling Group](#creating-ami-for-auto-scaling-group) section
+   - Add the AMI ID to your terraform.tfvars file as `custom_ami_id`
+
+4. **Initialize Terraform**
    ```bash
    terraform init
    ```
 
-4. **Plan the deployment**
+5. **Plan the deployment**
    ```bash
    terraform plan
    ```
 
-5. **Apply the configuration**
+6. **Apply the configuration**
    ```bash
    terraform apply
    ```
 
-6. **Access your application**
+7. **Access your application**
    ```bash
    # The application is accessible via the ALB DNS name
    echo "Application URL: http://$(terraform output -raw alb_dns_name)"
    ```
 
-### Application Setup
+## Setup Scripts
 
-7. **Once the infrastructure is deployed**
-   
-   The Auto Scaling Group will automatically set up the application using the user data script. You can monitor the deployment by checking the ASG instances and their logs.
+This section contains the setup scripts for both the ChromaDB EC2 instance and the frontend/backend instances in the Auto Scaling Group.
+
+### ChromaDB Setup Script
+
+This script is used to set up ChromaDB on the dedicated EC2 instance. The script is automatically executed by the user data when the ChromaDB EC2 instance is launched.
+
+```bash
+#!/bin/bash
+
+# Check if the correct number of arguments is provided
+if [ $# -ne 3 ]; then
+    echo "Usage: $0 <PAT_token> <repo_url> <branch_name>"
+    exit 1
+fi
+
+# Assign arguments to variables
+PAT_TOKEN="$1"
+REPO_URL="$2"
+BRANCH_NAME="$3"
+REPO_NAME=$(basename "$REPO_URL" .git)
+USER=$(whoami)
+HOME_DIR=$(eval echo ~$USER)
+
+# Set up Conda environment
+echo "Setting up conda environment..."
+source "$HOME_DIR/miniconda3/etc/profile.d/conda.sh"
+if ! conda env list | grep -q "^project "; then
+    conda create -y -n project python=3.11
+fi
+
+# Clone the repository
+echo "Cloning repository..."
+cd "$HOME_DIR"
+if [ -d "$REPO_NAME" ]; then
+    echo "Directory $REPO_NAME already exists. Please remove it or choose a different repository."
+    exit 1
+fi
+export GITHUB_TOKEN="$PAT_TOKEN"
+git clone -b "$BRANCH_NAME" "https://${GITHUB_TOKEN}@${REPO_URL}"
+if [ $? -ne 0 ]; then
+    echo "Failed to clone repository"
+    exit 1
+fi
+cd "$REPO_NAME"
+
+# Install requirements
+echo "Installing requirements..."
+if [ -f requirements.txt ]; then
+    "$HOME_DIR/miniconda3/envs/project/bin/pip" install -r requirements.txt
+else
+    echo "No requirements.txt found"
+fi
+
+# Create systemd services
+echo "Creating systemd services..."
+cat <<EOF | sudo tee /etc/systemd/system/chromadb.service
+[Unit]
+Description=ChromaDB
+After=network.target
+
+[Service]
+Type=simple
+User=$USER
+WorkingDirectory=$HOME_DIR/$REPO_NAME
+ExecStart=$HOME_DIR/miniconda3/envs/project/bin/chroma run --host 0.0.0.0 --port 8000 --path $HOME_DIR/$REPO_NAME/chroma_db
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+echo "Reloading systemd and starting services..."
+sudo systemctl daemon-reload
+sudo systemctl enable chromadb
+sudo systemctl start chromadb
+
+echo "Setup completed successfully"
+```
+
+### Frontend/Backend Setup Script
+
+This script is used to set up the frontend (Streamlit) and backend (FastAPI) on an EC2 instance that will be used to create an AMI for the Auto Scaling Group.
+
+```bash
+#!/bin/bash
+
+# Check if the correct number of arguments is provided
+if [ $# -ne 9 ]; then
+    echo "Usage: $0 <PAT_token> <repo_url> <branch_name> <db_host> <target_db> <db_username> <db_password> <secret_name> <region>"
+    exit 1
+fi
+
+# Assign arguments to variables
+PAT_TOKEN="$1"
+REPO_URL="$2"
+BRANCH_NAME="$3"
+DB_HOST="$4"
+TARGET_DB="$5"
+DB_USERNAME="$6"
+DB_PASSWORD="$7"
+SECRET_NAME="$8"
+REGION="$9"
+REPO_NAME=$(basename "$REPO_URL" .git)
+USER=$(whoami)
+HOME_DIR=$(eval echo ~$USER)
+
+# Database names
+DEFAULT_DB="postgres"
+
+# Set up PostgreSQL database
+echo "Setting up database..."
+
+# Step 1: Create the 'TARGET_DB' database
+echo "Creating the $TARGET_DB database..."
+psql "host=$DB_HOST port=5432 dbname=$DEFAULT_DB user=$DB_USERNAME password=$DB_PASSWORD sslmode=require" \
+    -c "CREATE DATABASE $TARGET_DB;" 2>/dev/null || echo "Database '$TARGET_DB' already exists."
+
+# Step 2: Create the 'advanced_chats' table in the 'TARGET_DB' database
+echo "Creating the 'advanced_chats' table in the $TARGET_DB database..."
+psql "host=$DB_HOST port=5432 dbname=$TARGET_DB user=$DB_USERNAME password=$DB_PASSWORD sslmode=require" \
+    -c "CREATE TABLE IF NOT EXISTS advanced_chats (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        file_path TEXT NOT NULL,
+        last_update TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        pdf_path TEXT,
+        pdf_name TEXT,
+        pdf_uuid TEXT
+    );"
+
+echo "Database and table setup completed successfully."
+
+# Set up Conda environment
+echo "Setting up conda environment..."
+source "$HOME_DIR/miniconda3/etc/profile.d/conda.sh"
+if ! conda env list | grep -q "^project "; then
+    conda create -y -n project python=3.11
+fi
+
+# Clone the repository
+echo "Cloning repository..."
+cd "$HOME_DIR"
+if [ -d "$REPO_NAME" ]; then
+    echo "Directory $REPO_NAME already exists. Please remove it or choose a different repository."
+    exit 1
+fi
+export GITHUB_TOKEN="$PAT_TOKEN"
+git clone -b "$BRANCH_NAME" "https://${GITHUB_TOKEN}@${REPO_URL}"
+if [ $? -ne 0 ]; then
+    echo "Failed to clone repository"
+    exit 1
+fi
+cd "$REPO_NAME"
+
+# Install requirements
+echo "Installing requirements..."
+if [ -f requirements.txt ]; then
+    "$HOME_DIR/miniconda3/envs/project/bin/pip" install -r requirements.txt
+else
+    echo "No requirements.txt found"
+fi
+
+sudo -u $USER tee $HOME_DIR/$REPO_NAME/.env <<EOF
+SECRET_NAME=$SECRET_NAME
+REGION_NAME=$REGION
+EOF
+
+cat <<EOF | sudo tee /etc/systemd/system/backend.service
+[Unit]
+Description=backend
+After=network.target
+
+[Service]
+Type=simple
+User=$USER
+WorkingDirectory=$HOME_DIR/$REPO_NAME
+ExecStart=$HOME_DIR/miniconda3/envs/project/bin/uvicorn backend:app --reload --port 5000
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+cat <<EOF | sudo tee /etc/systemd/system/frontend.service
+[Unit]
+Description=Streamlit
+After=network.target
+
+[Service]
+Type=simple
+User=$USER
+WorkingDirectory=$HOME_DIR/$REPO_NAME
+ExecStart=$HOME_DIR/miniconda3/envs/project/bin/streamlit run chatbot.py
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Reload systemd and start services
+echo "Reloading systemd and starting services..."
+sudo systemctl daemon-reload
+for service in backend frontend; do
+    sudo systemctl enable $service
+    sudo systemctl start $service
+done
+
+echo "Setup completed successfully"
+```
+
+### Creating AMI for Auto Scaling Group
+
+To create a custom AMI for the Auto Scaling Group, follow these steps:
+
+1. **Launch a temporary EC2 instance**
+   - Use the same Ubuntu AMI that will be used in the Auto Scaling Group
+   - Choose an instance type similar to what you'll use in the ASG (e.g., t2.large)
+   - Make sure to use the same key pair you'll use for the infrastructure
+   - Attach an IAM role with permissions for S3, Secrets Manager, and SSM
+
+2. **Connect to the instance**
+   ```bash
+   ssh -i ~/.ssh/your-key-pair.pem ubuntu@<instance-public-ip>
+   ```
+
+3. **Install Miniconda and other prerequisites**
+   ```bash
+   # Update system
+   sudo apt update
+   sudo apt install -y gnupg2 wget curl git awscli
+
+   # Install and configure SSM Agent
+   sudo snap install amazon-ssm-agent --classic
+   sudo systemctl enable snap.amazon-ssm-agent.amazon-ssm-agent.service
+   sudo systemctl start snap.amazon-ssm-agent.amazon-ssm-agent.service
+
+   # Install Miniconda3
+   mkdir -p ~/miniconda3
+   wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda3/miniconda.sh
+   bash ~/miniconda3/miniconda.sh -b -u -p ~/miniconda3
+   rm ~/miniconda3/miniconda.sh
+   echo 'export PATH="$HOME/miniconda3/bin:$PATH"' >> ~/.bashrc
+   source ~/.bashrc
+   ```
+
+4. **Create the setup script**
+   ```bash
+   nano ~/setup.sh
+   # Copy and paste the Frontend/Backend Setup Script
+   chmod +x ~/setup.sh
+   ```
+
+5. **Run the setup script with your parameters**
+   ```bash
+   ~/setup.sh <PAT_token> <repo_url> <branch_name> <db_host> <target_db> <db_username> <db_password> <secret_name> <region>
+   ```
+
+6. **Verify that the services are running**
+   ```bash
+   sudo systemctl status backend
+   sudo systemctl status frontend
+   ```
+
+7. **Create an AMI from the instance**
+   - In the AWS Console, select the instance
+   - Click Actions > Image and templates > Create image
+   - Provide a name and description for the AMI
+   - Click Create image
+   - Wait for the AMI creation to complete (check the AMIs section in the EC2 console)
+
+8. **Use the AMI ID in your terraform.tfvars file**
+   ```hcl
+   custom_ami_id = "ami-0123456789abcdef0"  # Replace with your AMI ID
+   ```
+
+9. **Terminate the temporary instance**
+   - Once the AMI is created and you've noted the AMI ID, you can terminate the temporary instance
 
 ## Environment Variables Setup
 
-8. **Update OpenAI API Key in AWS Secrets Manager**
+After deploying the infrastructure, you need to update the OpenAI API key in AWS Secrets Manager:
    
-   The infrastructure automatically creates an AWS Secrets Manager secret with all required configuration values. However, you need to manually update the OpenAI API key:
+```bash
+# Using AWS CLI to update the OpenAI API key
+aws secretsmanager update-secret --secret-id chatbot-secrets \
+  --secret-string '{
+    "PROJ-DB-NAME": "your_database_name",
+    "PROJ-DB-USER": "your_database_username", 
+    "PROJ-DB-PASSWORD": "your_database_password",
+    "PROJ-DB-HOST": "your_database_host",
+    "PROJ-DB-PORT": "5432",
+    "PROJ-OPENAI-API-KEY": "your_actual_openai_api_key_here",
+    "PROJ-S3-BUCKET-NAME": "your_s3_bucket_name",
+    "PROJ-CHROMADB-HOST": "your_chromadb_private_ip",
+    "PROJ-CHROMADB-PORT": "8000"
+  }'
+```
    
-   ```bash
-   # Using AWS CLI to update the OpenAI API key
-   aws secretsmanager update-secret --secret-id chatbot-secrets \
-     --secret-string '{
-       "PROJ-DB-NAME": "your_database_name",
-       "PROJ-DB-USER": "your_database_username", 
-       "PROJ-DB-PASSWORD": "your_database_password",
-       "PROJ-DB-HOST": "your_database_host",
-       "PROJ-DB-PORT": "5432",
-       "PROJ-OPENAI-API-KEY": "your_actual_openai_api_key_here",
-       "PROJ-S3-BUCKET-NAME": "your_s3_bucket_name",
-       "PROJ-CHROMADB-HOST": "your_chromadb_private_ip",
-       "PROJ-CHROMADB-PORT": "8000"
-     }'
-   ```
-   
-   Alternatively, you can update it through the AWS Console:
-   1. Go to AWS Secrets Manager in the AWS Console
-   2. Find the secret named `chatbot-secrets` (or your custom secret name)
-   3. Click "Retrieve secret value"
-   4. Click "Edit"
-   5. Update the `PROJ-OPENAI-API-KEY` value with your actual OpenAI API key
-   6. Save the changes
+Alternatively, you can update it through the AWS Console:
+1. Go to AWS Secrets Manager in the AWS Console
+2. Find the secret named `chatbot-secrets` (or your custom secret name)
+3. Click "Retrieve secret value"
+4. Click "Edit"
+5. Update the `PROJ-OPENAI-API-KEY` value with your actual OpenAI API key
+6. Save the changes
 
-   **Note**: The application now reads all configuration from AWS Secrets Manager instead of environment variables. The EC2 instances only need two environment variables:
-   - `SECRET_NAME`: The name of the AWS Secrets Manager secret (automatically set)
-   - `REGION_NAME`: The AWS region (automatically set)
+**Note**: The application reads all configuration from AWS Secrets Manager. The EC2 instances only need two environment variables:
+- `SECRET_NAME`: The name of the AWS Secrets Manager secret (automatically set)
+- `REGION_NAME`: The AWS region (automatically set)
 
 ## Post-Deployment Verification
 
@@ -326,12 +605,6 @@ The deployment uses AWS Systems Manager (SSM) to remotely execute the update scr
 - Restarts backend and frontend services
 - Performs basic health checks on the services
 
-### Prerequisites for GitHub Actions:
-1. **AWS Credentials**: Configure AWS access keys in GitHub repository secrets
-2. **EC2 SSM Access**: Ensure EC2 instances have proper IAM roles for SSM access (automatically configured by Terraform)
-3. **Repository Secrets**: Set up required secrets in your GitHub repository
-4. **Branch Configuration**: Update the workflow file to target your desired branch
-
 ### Required GitHub Secrets:
 ```
 AWS_ACCESS_KEY_ID          # AWS access key for GitHub Actions
@@ -349,25 +622,6 @@ on:
     branches:
       - your-branch-name  # Change this to your desired branch
 ```
-
-### Workflow Trigger:
-The CI/CD pipeline is automatically triggered when:
-- **Push to configured branch**: Automatic deployment to the ASG instances
-- The workflow includes basic testing and dependency management
-- Failed deployments will show in the GitHub Actions tab for troubleshooting
-
-### Service Management:
-The deployment script automatically:
-- Updates application code to the latest version
-- Installs/updates Python dependencies
-- Restarts the `backend` service (FastAPI on port 5000)
-- Restarts the `frontend` service (Streamlit on port 8501)
-- Provides basic health check feedback
-
-### Monitoring Deployment:
-- Check GitHub Actions tab for deployment status
-- Monitor EC2 instance logs through CloudWatch or SSM Session Manager
-- Verify services are running through SSM commands
 
 This automation ensures consistent deployments and reduces manual intervention while maintaining application availability.
 

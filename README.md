@@ -259,7 +259,7 @@ This section contains the setup scripts for both the ChromaDB EC2 instance and t
 
 This script is used to set up ChromaDB on the dedicated EC2 instance.
 
-Create a file named `setup.sh`, copy the script from the [Application Setup Script](#application-setup-script) section below, and run it with the required arguments:
+Create a file named `setup.sh`, copy the script from the section below, and run it with the required arguments:
    
    ```bash
    chmod +x setup.sh
@@ -497,48 +497,6 @@ echo "Setup completed successfully"
 
 To create a custom AMI for the Auto Scaling Group, follow these steps:
 
-1. **Launch a temporary EC2 instance**
-   - Use the same Ubuntu AMI that will be used in the Auto Scaling Group
-   - Choose an instance type similar to what you'll use in the ASG (e.g., t2.large)
-   - Make sure to use the same key pair you'll use for the infrastructure
-   - Attach an IAM role with permissions for S3, Secrets Manager, and SSM
-
-2. **Connect to the instance**
-   ```bash
-   ssh -i ~/.ssh/your-key-pair.pem ubuntu@<instance-public-ip>
-   ```
-
-3. **Install Miniconda and other prerequisites**
-   ```bash
-   # Update system
-   sudo apt update
-   sudo apt install -y gnupg2 wget curl git awscli
-
-   # Install and configure SSM Agent
-   sudo snap install amazon-ssm-agent --classic
-   sudo systemctl enable snap.amazon-ssm-agent.amazon-ssm-agent.service
-   sudo systemctl start snap.amazon-ssm-agent.amazon-ssm-agent.service
-
-   # Install Miniconda3
-   mkdir -p ~/miniconda3
-   wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda3/miniconda.sh
-   bash ~/miniconda3/miniconda.sh -b -u -p ~/miniconda3
-   rm ~/miniconda3/miniconda.sh
-   echo 'export PATH="$HOME/miniconda3/bin:$PATH"' >> ~/.bashrc
-   source ~/.bashrc
-   ```
-
-4. **Create the setup script**
-   ```bash
-   nano ~/setup.sh
-   # Copy and paste the Frontend/Backend Setup Script
-   chmod +x ~/setup.sh
-   ```
-
-5. **Run the setup script with your parameters**
-   ```bash
-   ~/setup.sh <PAT_token> <repo_url> <branch_name> <db_host> <target_db> <db_username> <db_password> <secret_name> <region>
-   ```
 
 6. **Verify that the services are running**
    ```bash

@@ -257,7 +257,19 @@ This section contains the setup scripts for both the ChromaDB EC2 instance and t
 
 ### ChromaDB Setup Script
 
-This script is used to set up ChromaDB on the dedicated EC2 instance. The script is automatically executed by the user data when the ChromaDB EC2 instance is launched.
+This script is used to set up ChromaDB on the dedicated EC2 instance.
+
+Create a file named `setup.sh`, copy the script from the [Application Setup Script](#application-setup-script) section below, and run it with the required arguments:
+   
+   ```bash
+   chmod +x setup.sh
+   bash setup.sh <PAT_token> <repo_url> <branch_name>
+   ```
+   
+   **Script Arguments:**
+   - **PAT_token**: Your GitHub personal access token
+   - **repo_url**: The URL of your GitHub repository (without https://)
+   - **branch_name**: The branch name to use on the EC2
 
 ```bash
 #!/bin/bash
@@ -335,6 +347,24 @@ echo "Setup completed successfully"
 ### Frontend/Backend Setup Script
 
 This script is used to set up the frontend (Streamlit) and backend (FastAPI) on an EC2 instance that will be used to create an AMI for the Auto Scaling Group.
+
+Create a file named `setup.sh`, copy the script below, and run it with the required arguments:
+   
+   ```bash
+   chmod +x setup.sh
+   bash setup.sh <PAT_token> <repo_url> <branch_name> <db_host> <target_db> <db_username> <db_password> <secret_name> <region>
+   ```
+   
+   **Script Arguments:**
+   - **PAT_token**: Your GitHub personal access token
+   - **repo_url**: The URL of your GitHub repository (without https://)
+   - **branch_name**: The branch name to use on the EC2
+   - **db_host**: The database host (e.g., [dbteststage6.postgres.database.azure.com](http://dbteststage6.postgres.database.azure.com/)).
+   - **target_db**: The name of the database that was created.
+   - **db_username**: The username for the database server.
+   - **db_password**: The password for the database server.
+   - **secret_name**: The name of the AWS Secrets Manager secret.
+   - **region**: The AWS region where the secret is stored.
 
 ```bash
 #!/bin/bash

@@ -2,32 +2,24 @@ import streamlit as st
 import uuid
 import requests
 import os
+from dotenv import load_dotenv
 
-# Load configuration from environment variables
-def get_backend_url():
-    # Get backend address from environment variable
-    backend_address = os.environ.get("BACKEND_API_URL")
+load_dotenv()
+# Get backend address from environment variable
+backend_address = os.environ.get("BACKEND_API_URL")
     
-    # Default to localhost if not found
-    backend_address = backend_address or "127.0.0.1:5000"
-    
-    # Add http:// prefix if not present
-    if not backend_address.startswith("http://") and not backend_address.startswith("https://"):
-        backend_address = f"http://{backend_address}"
-    
-    return backend_address
+# Add http:// prefix if not present
+backend_address = f"http://{backend_address}:5000"
 
-# Get backend base URL
-BACKEND_API_URL = get_backend_url()
-st.sidebar.info(f"Connected to backend: {BACKEND_API_URL}")
+st.sidebar.info(f"Connected to backend: {backend_address}")
 
 # Backend URLs define
-LOAD_CHAT_URL = f"{BACKEND_API_URL}/load_chat/"
-SAVE_CHAT_URL = f"{BACKEND_API_URL}/save_chat/"
-DELETE_CHAT_URL = f"{BACKEND_API_URL}/delete_chat/"
-UPLOAD_PDF_URL = f"{BACKEND_API_URL}/upload_pdf/"
-CHAT_URL = f"{BACKEND_API_URL}/chat/"
-RAG_CHAT_URL = f"{BACKEND_API_URL}/rag_chat/"
+LOAD_CHAT_URL = f"{backend_address}/load_chat/"
+SAVE_CHAT_URL = f"{backend_address}/save_chat/"
+DELETE_CHAT_URL = f"{backend_address}/delete_chat/"
+UPLOAD_PDF_URL = f"{backend_address}/upload_pdf/"
+CHAT_URL = f"{backend_address}/chat/"
+RAG_CHAT_URL = f"{backend_address}/rag_chat/"
 
 # Initialize session state
 if "history_chats" not in st.session_state:

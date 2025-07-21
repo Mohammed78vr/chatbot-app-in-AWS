@@ -3,23 +3,45 @@ import uuid
 import requests
 import os
 from dotenv import load_dotenv
+import boto3
+from botocore.exceptions import ClientError
 
 load_dotenv()
-# Get backend address from environment variable
-backend_address = os.environ.get("BACKEND_API_URL")
+
+def get_secrets(secret_name=os.environ.get("SECRET_NAME"), region_name=os.environ.get("REGION_NAME")):
+    # Create a session and client for Secrets Manager
+    session = boto3.session.Session()
+    client = session.client(
+        service_name='secretsmanager',
+        region_name=region_name
+    )
+
+    try:
+        response = client.get_secret_value(SecretId=secret_name)
+        secret_string = response['SecretString']
+        return json.loads(secret_string)  # Converts the JSON string to a Python dict
+    except ClientError as e:
+        print(f"Failed to retrieve secrets: {e}")
+        return {}
+
+# 🔐 Load all secrets
+secrets = get_secrets()
+
+# 🗝 Access your secrets as needed
+BACKEND_ALB_URL = secrets.get('PROJ-BACKEND-ALB-URL')
     
 # Add http:// prefix if not present
-backend_address = f"http://{backend_address}:5000"
+BACKEND_ALB_URL = f"http://{BACKEND_ALB_URL}:5000"
 
-st.sidebar.info(f"Connected to backend: {backend_address}")
+st.sidebar.info(f"Connected to backend: {BACKEND_ALB_URL}")
 
 # Backend URLs define
-LOAD_CHAT_URL = f"{backend_address}/load_chat/"
-SAVE_CHAT_URL = f"{backend_address}/save_chat/"
-DELETE_CHAT_URL = f"{backend_address}/delete_chat/"
-UPLOAD_PDF_URL = f"{backend_address}/upload_pdf/"
-CHAT_URL = f"{backend_address}/chat/"
-RAG_CHAT_URL = f"{backend_address}/rag_chat/"
+LOAD_CHAT_URL = f"{BACKEND_ALB_URL}/load_chat/"
+SAVE_CHAT_URL = f"{BACKEND_ALB_URL}/save_chat/"
+DELETE_CHAT_URL = f"{BACKEND_ALB_URL}/delete_chat/"
+UPLOAD_PDF_URL = f"{BACKEND_ALB_URL}/upload_pdf/"
+CHAT_URL = f"{BACKEND_ALB_URL}/chat/"
+RAG_CHAT_URL = f"{BACKEND_ALB_URL}/rag_chat/"
 
 # Initialize session state
 if "history_chats" not in st.session_state:

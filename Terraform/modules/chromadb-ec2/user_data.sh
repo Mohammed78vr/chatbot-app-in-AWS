@@ -11,6 +11,7 @@ sudo apt-get install -y wget curl git
 sudo apt-get install -y awscli
 
 # Install and configure SSM Agent
+sleep 20
 sudo snap install amazon-ssm-agent --classic
 sudo systemctl enable snap.amazon-ssm-agent.amazon-ssm-agent.service
 sudo systemctl start snap.amazon-ssm-agent.amazon-ssm-agent.service

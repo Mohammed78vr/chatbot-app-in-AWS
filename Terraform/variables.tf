@@ -23,39 +23,57 @@ variable "vpc_cidr" {
 }
 
 variable "public_subnet_cidr" {
-  description = "CIDR block for first public subnet"
+  description = "CIDR block for first public subnet (NAT Gateway + ALB - AZ1)"
   type        = string
   default     = "10.0.1.0/24"
 }
 
 variable "public_subnet_2_cidr" {
-  description = "CIDR block for second public subnet"
-  type        = string
-  default     = "10.0.6.0/24"
-}
-
-variable "private_subnet_cidr" {
-  description = "CIDR block for first private subnet (ChromaDB)"
+  description = "CIDR block for second public subnet (ALB - AZ2)"
   type        = string
   default     = "10.0.2.0/24"
 }
 
-variable "private_subnet_2_cidr" {
-  description = "CIDR block for second private subnet (RDS)"
+variable "frontend_subnet_1_cidr" {
+  description = "CIDR block for frontend private subnet (AZ1)"
   type        = string
   default     = "10.0.3.0/24"
 }
 
-variable "private_subnet_3_cidr" {
-  description = "CIDR block for third private subnet (ASG - AZ1)"
+variable "frontend_subnet_2_cidr" {
+  description = "CIDR block for frontend private subnet (AZ2)"
   type        = string
   default     = "10.0.4.0/24"
 }
 
-variable "private_subnet_4_cidr" {
-  description = "CIDR block for fourth private subnet (ASG - AZ2)"
+variable "backend_subnet_1_cidr" {
+  description = "CIDR block for backend private subnet (Internal ALB + ASG - AZ1)"
   type        = string
   default     = "10.0.5.0/24"
+}
+
+variable "backend_subnet_2_cidr" {
+  description = "CIDR block for backend private subnet (Internal ALB + ASG - AZ2)"
+  type        = string
+  default     = "10.0.6.0/24"
+}
+
+variable "chromadb_subnet_cidr" {
+  description = "CIDR block for ChromaDB private subnet (AZ1)"
+  type        = string
+  default     = "10.0.7.0/24"
+}
+
+variable "rds_subnet_cidr" {
+  description = "CIDR block for RDS private subnet (AZ1)"
+  type        = string
+  default     = "10.0.8.0/24"
+}
+
+variable "rds_subnet_2_cidr" {
+  description = "CIDR block for RDS private subnet (AZ2)"
+  type        = string
+  default     = "10.0.9.0/24"
 }
 
 variable "chromadb_instance_type" {
@@ -119,6 +137,12 @@ variable "chromadb_port" {
 
 variable "custom_ami_id" {
   description = "Custom AMI ID for ASG instances (optional)"
+  type        = string
+  default     = ""
+}
+
+variable "frontend_ami_id" {
+  description = "Custom AMI ID for frontend ASG instances (optional)"
   type        = string
   default     = ""
 }

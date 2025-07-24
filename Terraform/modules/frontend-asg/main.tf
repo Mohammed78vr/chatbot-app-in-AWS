@@ -14,9 +14,9 @@ data "aws_ami" "ubuntu" {
   }
 }
 
-# Launch Template for ASG
-resource "aws_launch_template" "chatbot_lt" {
-  name_prefix   = "chatbot-lt-"
+# Launch Template for Frontend ASG
+resource "aws_launch_template" "frontend_lt" {
+  name_prefix   = "chatbot-frontend-lt-"
   image_id      = var.custom_ami_id != "" ? var.custom_ami_id : data.aws_ami.ubuntu.id
   instance_type = var.instance_type
   key_name      = var.key_name
@@ -32,16 +32,16 @@ resource "aws_launch_template" "chatbot_lt" {
   }
 
   user_data = base64encode(templatefile("${path.module}/user_data.sh", {
-    chromadb_host = var.chromadb_host
-    chromadb_port = var.chromadb_port
-    secret_name   = var.secret_name
-    region        = var.region
+    secret_name         = var.secret_name
+    region              = var.region
+    backend_alb_dns_name = var.backend_alb_dns_name
   }))
 
   tag_specifications {
     resource_type = "instance"
     tags = merge(var.tags, {
-      Name = "chatbot-asg-instance"
+      Name = "frontend-chatbot-instance"
+      Type = "Frontend"
     })
   }
 
@@ -50,24 +50,26 @@ resource "aws_launch_template" "chatbot_lt" {
   }
 }
 
-# Auto Scaling Group
-resource "aws_autoscaling_group" "chatbot_asg" {
-  name                = "chatbot-asg"
+# Auto Scaling Group for Frontend
+resource "aws_autoscaling_group" "frontend_asg" {
+  name                = "frontend-chatbot-asg"
   vpc_zone_identifier = var.private_subnet_ids
   desired_capacity    = var.desired_capacity
   min_size            = var.min_size
   max_size            = var.max_size
   target_group_arns   = [var.target_group_arn]
   health_check_type   = "ELB"
+  health_check_grace_period = 300
   
   launch_template {
-    id      = aws_launch_template.chatbot_lt.id
+    id      = aws_launch_template.frontend_lt.id
     version = "$Latest"
   }
 
   dynamic "tag" {
     for_each = merge(var.tags, {
-      Name = "chatbot-asg-instance"
+      Name = "frontend-chatbot-instance"
+      Type = "Frontend"
     })
     
     content {

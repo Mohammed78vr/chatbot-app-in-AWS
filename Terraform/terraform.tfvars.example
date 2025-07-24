@@ -1,47 +1,127 @@
-# Required variables
+# ========================================
+# REQUIRED VARIABLES
+# ========================================
 key_name        = "my-key-pair"
 s3_bucket_name  = "my-unique-chatbot-bucket-12345"
 db_password     = "your-secure-password"
 
-# Network configuration
-# vpc_cidr             = "10.0.0.0/16"
-# public_subnet_cidr   = "10.0.1.0/24"  # Public subnet in AZ1 (for ALB)
-# public_subnet_2_cidr = "10.0.6.0/24"  # Public subnet in AZ2 (for ALB)
-# private_subnet_cidr  = "10.0.2.0/24"  # ChromaDB subnet
-# private_subnet_2_cidr = "10.0.3.0/24" # RDS subnet
-# private_subnet_3_cidr = "10.0.4.0/24" # ASG subnet (AZ1)
-# private_subnet_4_cidr = "10.0.5.0/24" # ASG subnet (AZ2)
+# ========================================
+# NETWORK CONFIGURATION
+# ========================================
+# VPC Configuration
+# vpc_cidr = "10.0.0.0/16"
 
+# Public Subnets (2 AZs) - NAT Gateway + Internet-facing ALB
+# public_subnet_cidr       = "10.0.1.0/24"  # Public subnet AZ1 (NAT Gateway + ALB)
+# public_subnet_2_cidr     = "10.0.2.0/24"  # Public subnet AZ2 (ALB)
+
+# Frontend Private Subnets (2 AZs) - Frontend ASG
+# frontend_subnet_1_cidr   = "10.0.3.0/24"  # Frontend ASG AZ1
+# frontend_subnet_2_cidr   = "10.0.4.0/24"  # Frontend ASG AZ2
+
+# Backend Private Subnets (2 AZs) - Internal ALB + Backend ASG
+# backend_subnet_1_cidr    = "10.0.5.0/24"  # Backend ALB + ASG AZ1
+# backend_subnet_2_cidr    = "10.0.6.0/24"  # Backend ALB + ASG AZ2
+
+# Dedicated Private Subnets (AZ1)
+# chromadb_subnet_cidr     = "10.0.7.0/24"  # ChromaDB EC2 (AZ1 only)
+# rds_subnet_cidr          = "10.0.8.0/24"  # RDS Database (AZ1)
+# rds_subnet_2_cidr        = "10.0.9.0/24"  # RDS Database (AZ2) - Required for DB Subnet Group
+
+# ========================================
+# INSTANCE CONFIGURATION
+# ========================================
 # Instance types
 # chromadb_instance_type = "t3.large"
 # app_instance_type      = "t3.medium"
 
-# Project metadata
+# Custom AMI IDs (provide your own AMI IDs)
+# custom_ami_id        = ""  # Backend ASG AMI ID
+# frontend_ami_id      = ""  # Frontend ASG AMI ID (optional, will use custom_ami_id if not provided)
+
+# ========================================
+# PROJECT METADATA
+# ========================================
 # project_name    = "my-chatbot"
 # environment     = "production"
 # aws_region      = "us-west-2"
 
-# Database configuration
+# ========================================
+# DATABASE CONFIGURATION
+# ========================================
 # db_name         = "chatbotdb"
 # db_username     = "dbadmin"
 
-# Secrets and API keys
+# ========================================
+# SECRETS AND API KEYS
+# ========================================
 # secret_name     = "my-chatbot-secrets"
 # openai_api_key  = "placeholder-openai-key"  # Will be updated manually in AWS Secrets Manager
 
-# ChromaDB configuration
+# ========================================
+# CHROMADB CONFIGURATION
+# ========================================
 # chromadb_port   = "8000"
 
-# Auto Scaling Group configuration
-# custom_ami_id        = ""  # Provide your custom AMI ID if you have one
+# ========================================
+# AUTO SCALING GROUP CONFIGURATION
+# ========================================
 # asg_min_size         = 1
 # asg_max_size         = 3
 # asg_desired_capacity = 2
 
-# Common tags (optional)
+# ========================================
+# COMMON TAGS
+# ========================================
 # common_tags = {
 #   Project     = "ChatbotApp"
 #   Environment = "dev"
 #   Owner       = "DevOps"
 #   ManagedBy   = "Terraform"
 # }
+
+# ========================================
+# ARCHITECTURE OVERVIEW
+# ========================================
+# 
+# Public Layer (2 AZs):
+#   - Internet Gateway
+#   - NAT Gateway (AZ1)
+#   - Internet-facing ALB (Frontend)
+#
+# Frontend Layer (2 AZs):
+#   - Frontend ASG (Streamlit - port 8501)
+#   - Private subnets with NAT Gateway access
+#   - Launch Template with custom AMI support
+#
+# Backend Layer (2 AZs):
+#   - Internal ALB (Backend)
+#   - Backend ASG (FastAPI - port 5000)
+#   - Private subnets with NAT Gateway access
+#   - Launch Template with custom AMI support
+#
+# Data Layer (AZ1):
+#   - ChromaDB EC2 (port 8000)
+#   - RDS PostgreSQL (port 5432)
+#   - Dedicated private subnets
+#
+# Security:
+#   - Frontend → Backend ALB → Backend ASG
+#   - Backend ASG → ChromaDB/RDS
+#   - All layers isolated with security groups
+#
+# IAM Roles:
+#   - Frontend: Secrets Manager + SSM
+#   - Backend: S3 + Secrets Manager + SSM
+#   - ChromaDB: SSM only (AmazonSSMManagedInstanceCore)
+#
+# Secrets Manager includes:
+#   - PROJ-BACKEND-ALB-URL: Internal ALB DNS
+#   - Database credentials
+#   - API keys and configuration
+#
+# Launch Templates:
+#   - Both Frontend and Backend ASG use launch templates
+#   - Support for custom AMI IDs
+#   - Automatic fallback to latest Ubuntu AMI
+#   - Proper IAM instance profiles attached

@@ -20,6 +20,7 @@ resource "aws_secretsmanager_secret_version" "chatbot_secrets_version" {
     "PROJ-S3-BUCKET-NAME"  = var.s3_bucket_name
     "PROJ-CHROMADB-HOST"   = var.chromadb_host
     "PROJ-CHROMADB-PORT"   = var.chromadb_port
+    "PROJ-BACKEND-ALB-URL" = var.backend_alb_dns_name
   })
 
   lifecycle {

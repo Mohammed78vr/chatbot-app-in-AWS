@@ -54,6 +54,11 @@ variable "chromadb_port" {
   default     = "8000"
 }
 
+variable "backend_alb_dns_name" {
+  description = "Backend ALB DNS name"
+  type        = string
+}
+
 variable "tags" {
   description = "Tags to apply to resources"
   type        = map(string)

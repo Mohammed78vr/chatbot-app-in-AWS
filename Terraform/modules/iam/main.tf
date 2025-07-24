@@ -18,6 +18,60 @@ resource "aws_iam_role" "ec2_s3_role" {
   tags = var.tags
 }
 
+# IAM Role for ChromaDB EC2 instance
+resource "aws_iam_role" "chromadb_role" {
+  name = "chatbot-chromadb-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+      }
+    ]
+  })
+
+  tags = var.tags
+}
+
+# Attach AWS managed SSM policy to ChromaDB role
+resource "aws_iam_role_policy_attachment" "chromadb_ssm_managed_instance_core" {
+  role       = aws_iam_role.chromadb_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+}
+
+# Instance profile for ChromaDB
+resource "aws_iam_instance_profile" "chromadb_profile" {
+  name = "chatbot-chromadb-profile"
+  role = aws_iam_role.chromadb_role.name
+
+  tags = var.tags
+}
+
+# IAM Role for Frontend to access Secrets Manager and SSM
+resource "aws_iam_role" "frontend_role" {
+  name = "chatbot-frontend-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+      }
+    ]
+  })
+
+  tags = var.tags
+}
+
 # IAM Policy for S3 access
 resource "aws_iam_policy" "s3_access_policy" {
   name        = "chatbot-s3-access-policy"
@@ -77,6 +131,26 @@ resource "aws_iam_role_policy_attachment" "ec2_s3_policy_attachment" {
 resource "aws_iam_role_policy_attachment" "ec2_secrets_manager_policy_attachment" {
   role       = aws_iam_role.ec2_s3_role.name
   policy_arn = aws_iam_policy.secrets_manager_policy.arn
+}
+
+# Attach Secrets Manager policy to frontend role
+resource "aws_iam_role_policy_attachment" "frontend_secrets_manager_policy_attachment" {
+  role       = aws_iam_role.frontend_role.name
+  policy_arn = aws_iam_policy.secrets_manager_policy.arn
+}
+
+# Attach AWS managed SSM policy to frontend role
+resource "aws_iam_role_policy_attachment" "frontend_ssm_managed_instance_core" {
+  role       = aws_iam_role.frontend_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+}
+
+# Instance profile for Frontend
+resource "aws_iam_instance_profile" "frontend_profile" {
+  name = "chatbot-frontend-profile"
+  role = aws_iam_role.frontend_role.name
+
+  tags = var.tags
 }
 
 # Attach AWS managed SSM policies to role

@@ -80,7 +80,7 @@ The infrastructure includes:
 
 ### Architecture Diagram
 
-![AWS Infrastructure Architecture](imgs/stage-4.drawio.png)
+![AWS Infrastructure Architecture](imgs/stage-5.drawio.png)
 
 The diagram above illustrates the complete AWS infrastructure architecture deployed by this Terraform project:
 

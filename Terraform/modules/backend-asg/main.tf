@@ -32,8 +32,6 @@ resource "aws_launch_template" "chatbot_lt" {
   }
 
   user_data = base64encode(templatefile("${path.module}/user_data.sh", {
-    chromadb_host = var.chromadb_host
-    chromadb_port = var.chromadb_port
     secret_name   = var.secret_name
     region        = var.region
   }))

@@ -34,7 +34,6 @@ resource "aws_launch_template" "frontend_lt" {
   user_data = base64encode(templatefile("${path.module}/user_data.sh", {
     secret_name         = var.secret_name
     region              = var.region
-    backend_alb_dns_name = var.backend_alb_dns_name
   }))
 
   tag_specifications {

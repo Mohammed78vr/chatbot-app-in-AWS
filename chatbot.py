@@ -34,8 +34,6 @@ BACKEND_ALB_URL = secrets.get('PROJ-BACKEND-ALB-URL')
 # Add http:// prefix if not present
 BACKEND_ALB_URL = f"http://{BACKEND_ALB_URL}:5000"
 
-st.sidebar.info(f"Connected to backend: {BACKEND_ALB_URL}")
-
 # Backend URLs define
 LOAD_CHAT_URL = f"{BACKEND_ALB_URL}/load_chat/"
 SAVE_CHAT_URL = f"{BACKEND_ALB_URL}/save_chat/"

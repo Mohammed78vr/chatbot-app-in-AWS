@@ -36,20 +36,31 @@ jobs:
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ secrets.AWS_REGION }}
 
-    # Deploy to EC2 Auto Scaling Group
-    - name: Deploy to EC2 Auto Scaling Group
+    # Deploy to EC2 Auto Scaling Groups
+    - name: Deploy to EC2 Auto Scaling Groups
       run: |
-        # Get all instance IDs in the Auto Scaling Group
-        INSTANCE_IDS=$(aws autoscaling describe-auto-scaling-groups \
-          --auto-scaling-group-name ${{ secrets.ASG_NAME }} \
-          --query 'AutoScalingGroups[0].Instances[*].InstanceId' \
-          --output text)
+        # Split comma-separated ASG names into array
+        IFS=',' read -ra ASG_NAMES <<< "${{ secrets.ASG_NAMES }}"
         
-        # Deploy to each instance in the ASG
-        for INSTANCE_ID in $INSTANCE_IDS; do
-          aws ssm send-command \
-            --instance-ids $INSTANCE_ID \
-            --document-name "AWS-RunShellScript" \
-            --parameters commands=["export GITHUB_TOKEN=${{ secrets.TOKEN }} && sudo -u ubuntu bash /home/ubuntu/chatbot-app-in-AWS/update_app.sh"] \
-            --comment "Deploying application update to ASG instance $INSTANCE_ID"
+        # Deploy to each Auto Scaling Group
+        for ASG_NAME in "${ASG_NAMES[@]}"; do
+          # Trim whitespace
+          ASG_NAME=$(echo "$ASG_NAME" | xargs)
+          echo "Deploying to Auto Scaling Group: $ASG_NAME"
+          
+          # Get all instance IDs in the current Auto Scaling Group
+          INSTANCE_IDS=$(aws autoscaling describe-auto-scaling-groups \
+            --auto-scaling-group-name $ASG_NAME \
+            --query 'AutoScalingGroups[0].Instances[*].InstanceId' \
+            --output text)
+          
+          # Deploy to each instance in the current ASG
+          for INSTANCE_ID in $INSTANCE_IDS; do
+            echo "Deploying to instance: $INSTANCE_ID in ASG: $ASG_NAME"
+            aws ssm send-command \
+              --instance-ids $INSTANCE_ID \
+              --document-name "AWS-RunShellScript" \
+              --parameters commands=["export GITHUB_TOKEN=${{ secrets.TOKEN }} && sudo -u ubuntu bash /home/ubuntu/chatbot-app-in-AWS/update_app.sh"] \
+              --comment "Deploying application update to ASG $ASG_NAME instance $INSTANCE_ID"
+          done
         done

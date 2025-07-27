@@ -24,7 +24,6 @@ resource "aws_instance" "chromadb_instance" {
   iam_instance_profile   = var.iam_role_name
 
   user_data = base64encode(templatefile("${path.module}/user_data.sh", {
-    is_chromadb_only = true
   }))
 
   tags = merge(var.tags, {

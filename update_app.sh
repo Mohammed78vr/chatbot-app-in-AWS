@@ -7,7 +7,7 @@ echo "Updating Python application on EC2..."
 HOME_DIR=$(eval echo ~$USER)
 APP_DIR="$HOME_DIR/chatbot-app-in-AWS"
 REPO_URL="https://github.com/Mohammed78vr/chatbot-app-in-AWS.git"
-BRANCH="stage-4"
+BRANCH="stage-5"
 GITHUB_TOKEN=$TOKEN  # Passed securely via protectedSettings
 
 # Update code

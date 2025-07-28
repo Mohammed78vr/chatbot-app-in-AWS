@@ -37,6 +37,7 @@ db_password     = "your-secure-password"
 
 # Custom AMI IDs (provide your own AMI IDs)
 # custom_ami_id        = ""  # Backend ASG AMI ID
+# chromadb_ami_id      = ""  # ChromaDB EC2 AMI ID
 # frontend_ami_id      = ""  # Frontend ASG AMI ID (optional, will use custom_ami_id if not provided)
 
 # ========================================

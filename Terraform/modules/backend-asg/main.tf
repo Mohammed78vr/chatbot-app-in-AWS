@@ -34,6 +34,10 @@ resource "aws_launch_template" "chatbot_lt" {
   user_data = base64encode(templatefile("${path.module}/user_data.sh", {
     secret_name   = var.secret_name
     region        = var.region
+    db_name       = var.db_name
+    db_host       = var.db_host
+    db_username   = var.db_username
+    db_password   = var.db_password
   }))
 
   tag_specifications {

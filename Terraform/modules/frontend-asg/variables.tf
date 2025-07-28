@@ -68,11 +68,6 @@ variable "region" {
   type        = string
 }
 
-variable "backend_alb_dns_name" {
-  description = "DNS name of the backend ALB"
-  type        = string
-}
-
 variable "tags" {
   description = "Tags to apply to resources"
   type        = map(string)

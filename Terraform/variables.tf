@@ -141,6 +141,12 @@ variable "custom_ami_id" {
   default     = ""
 }
 
+variable "chromadb_ami_id" {
+  description = "Custom AMI ID for ChromaDB instance (optional)"
+  type        = string
+  default     = ""
+}
+
 variable "frontend_ami_id" {
   description = "Custom AMI ID for frontend ASG instances (optional)"
   type        = string

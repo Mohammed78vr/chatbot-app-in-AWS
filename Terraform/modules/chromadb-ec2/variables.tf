@@ -29,6 +29,12 @@ variable "security_group_id" {
   type        = string
 }
 
+variable "custom_ami_id" {
+  description = "Custom AMI ID for ChromaDB instance (optional)"
+  type        = string
+  default     = ""
+}
+
 variable "tags" {
   description = "Tags to apply to resources"
   type        = map(string)

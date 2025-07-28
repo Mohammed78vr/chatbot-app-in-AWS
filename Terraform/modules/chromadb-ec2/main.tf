@@ -16,7 +16,7 @@ data "aws_ami" "ubuntu" {
 
 # EC2 Instance for ChromaDB
 resource "aws_instance" "chromadb_instance" {
-  ami                    = data.aws_ami.ubuntu.id
+  ami                    = var.custom_ami_id != "" ? var.custom_ami_id : data.aws_ami.ubuntu.id
   instance_type          = var.instance_type
   key_name               = var.key_name
   vpc_security_group_ids = [var.security_group_id]

@@ -185,6 +185,7 @@ module "chromadb_ec2" {
   
   instance_type = var.chromadb_instance_type
   key_name      = var.key_name
+  custom_ami_id = var.chromadb_ami_id
   
   tags = var.common_tags
 }
@@ -232,7 +233,6 @@ module "frontend_asg" {
   desired_capacity         = var.asg_desired_capacity
   secret_name              = var.secret_name
   region                   = var.aws_region
-  backend_alb_dns_name     = module.backend_alb.backend_alb_dns_name
   tags                     = var.common_tags
 }
 
@@ -251,10 +251,12 @@ module "backend_asg" {
   min_size                 = var.asg_min_size
   max_size                 = var.asg_max_size
   desired_capacity         = var.asg_desired_capacity
-  chromadb_host            = module.chromadb_ec2.private_ip
-  chromadb_port            = var.chromadb_port
   secret_name              = var.secret_name
   region                   = var.aws_region
+  db_name                  = var.db_name
+  db_host                  = module.rds.db_endpoint
+  db_username              = var.db_username
+  db_password              = var.db_password
   tags                     = var.common_tags
 }
 

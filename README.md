@@ -370,13 +370,237 @@ echo "Setup completed successfully"
 
 This script is used to set up the frontend (Streamlit) on an EC2 instance that will be used to create an AMI for the Frontend Auto Scaling Group.
 
-**Script will be provided here**
+This script is used to set up frontend on EC2 instance.
+
+Create a file named `setup.sh`, copy the script from the section below, and run it with the required arguments:
+   
+   ```bash
+   chmod +x setup.sh
+   bash setup.sh <PAT_token> <repo_url> <branch_name> <secret_name> <region>
+   ```
+   
+   **Script Arguments:**
+   - **PAT_token**: Your GitHub personal access token
+   - **repo_url**: The URL of your GitHub repository (without https://)
+   - **branch_name**: The branch name to use on the EC2
+   - **secret_name**: The name of the AWS Secrets Manager secret.
+   - **region**: The AWS region where the secret is stored.
+
+```bash
+#!/bin/bash
+
+# Check if the correct number of arguments is provided
+if [ $# -ne 5 ]; then
+    echo "Usage: $0 <PAT_token> <repo_url> <branch_name> <secret_name> <region>"
+    exit 1
+fi
+
+conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main
+conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
+
+# Assign arguments to variables
+PAT_TOKEN="$1"
+REPO_URL="$2"
+BRANCH_NAME="$3"
+SECRET_NAME="$4"
+REGION="$5"
+REPO_NAME=$(basename "$REPO_URL" .git)
+USER=$(whoami)
+HOME_DIR=$(eval echo ~$USER)
+
+# Set up Conda environment
+echo "Setting up conda environment..."
+source "$HOME_DIR/miniconda3/etc/profile.d/conda.sh"
+if ! conda env list | grep -q "^project "; then
+    conda create -y -n project python=3.11
+fi
+
+# Clone the repository
+echo "Cloning repository..."
+cd "$HOME_DIR"
+if [ -d "$REPO_NAME" ]; then
+    echo "Directory $REPO_NAME already exists. Please remove it or choose a different repository."
+    exit 1
+fi
+export GITHUB_TOKEN="$PAT_TOKEN"
+git clone -b "$BRANCH_NAME" "https://${GITHUB_TOKEN}@${REPO_URL}"
+if [ $? -ne 0 ]; then
+    echo "Failed to clone repository"
+    exit 1
+fi
+cd "$REPO_NAME"
+
+# Install requirements
+echo "Installing requirements..."
+if [ -f requirements.txt ]; then
+    "$HOME_DIR/miniconda3/envs/project/bin/pip" install -r requirements.txt
+else
+    echo "No requirements.txt found"
+fi
+
+sudo -u $USER tee $HOME_DIR/$REPO_NAME/.env <<EOF
+SECRET_NAME=$SECRET_NAME
+REGION_NAME=$REGION
+EOF
+
+cat <<EOF | sudo tee /etc/systemd/system/frontend.service
+[Unit]
+Description=Streamlit
+After=network.target
+
+[Service]
+Type=simple
+User=$USER
+WorkingDirectory=$HOME_DIR/$REPO_NAME
+ExecStart=$HOME_DIR/miniconda3/envs/project/bin/streamlit run chatbot.py
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Reload systemd and start services
+echo "Reloading systemd and starting services..."
+sudo systemctl daemon-reload
+sudo systemctl enable frontend
+sudo systemctl start frontend
+echo "Setup completed successfully"
+```
 
 ### Backend ASG Instance Setup Script
 
 This script is used to set up the backend (FastAPI) on an EC2 instance that will be used to create an AMI for the Backend Auto Scaling Group.
 
-**Script will be provided here**
+Create a file named `setup.sh`, copy the script below, and run it with the required arguments:
+   
+   ```bash
+   chmod +x setup.sh
+   bash setup.sh <PAT_token> <repo_url> <branch_name> <db_host> <target_db> <db_username> <db_password> <secret_name> <region>
+   ```
+   
+   **Script Arguments:**
+   - **PAT_token**: Your GitHub personal access token
+   - **repo_url**: The URL of your GitHub repository (without https://)
+   - **branch_name**: The branch name to use on the EC2
+   - **db_host**: The database host (e.g., [dbteststage6.postgres.database.azure.com](http://dbteststage6.postgres.database.azure.com/)).
+   - **target_db**: The name of the database that was created.
+   - **db_username**: The username for the database server.
+   - **db_password**: The password for the database server.
+   - **secret_name**: The name of the AWS Secrets Manager secret.
+   - **region**: The AWS region where the secret is stored.
+
+
+```bash
+#!/bin/bash
+
+# Check if the correct number of arguments is provided
+if [ $# -ne 9 ]; then
+    echo "Usage: $0 <PAT_token> <repo_url> <branch_name> <db_host> <target_db> <db_username> <db_password> <secret_name> <region>"
+    exit 1
+fi
+
+conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main
+conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
+
+# Assign arguments to variables
+PAT_TOKEN="$1"
+REPO_URL="$2"
+BRANCH_NAME="$3"
+DB_HOST="$4"
+TARGET_DB="$5"
+DB_USERNAME="$6"
+DB_PASSWORD="$7"
+SECRET_NAME="$8"
+REGION="$9"
+REPO_NAME=$(basename "$REPO_URL" .git)
+USER=$(whoami)
+HOME_DIR=$(eval echo ~$USER)
+
+# Database names
+DEFAULT_DB="postgres"
+
+# Set up PostgreSQL database
+echo "Setting up database..."
+
+# Step 1: Create the 'TARGET_DB' database
+echo "Creating the $TARGET_DB database..."
+psql "host=$DB_HOST port=5432 dbname=$DEFAULT_DB user=$DB_USERNAME password=$DB_PASSWORD sslmode=require" \
+    -c "CREATE DATABASE $TARGET_DB;" 2>/dev/null || echo "Database '$TARGET_DB' already exists."
+
+# Step 2: Create the 'advanced_chats' table in the 'TARGET_DB' database
+echo "Creating the 'advanced_chats' table in the $TARGET_DB database..."
+psql "host=$DB_HOST port=5432 dbname=$TARGET_DB user=$DB_USERNAME password=$DB_PASSWORD sslmode=require" \
+    -c "CREATE TABLE IF NOT EXISTS advanced_chats (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        file_path TEXT NOT NULL,
+        last_update TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        pdf_path TEXT,
+        pdf_name TEXT,
+        pdf_uuid TEXT
+    );"
+
+echo "Database and table setup completed successfully."
+
+# Set up Conda environment
+echo "Setting up conda environment..."
+source "$HOME_DIR/miniconda3/etc/profile.d/conda.sh"
+if ! conda env list | grep -q "^project "; then
+    conda create -y -n project python=3.11
+fi
+
+# Clone the repository
+echo "Cloning repository..."
+cd "$HOME_DIR"
+if [ -d "$REPO_NAME" ]; then
+    echo "Directory $REPO_NAME already exists. Please remove it or choose a different repository."
+    exit 1
+fi
+export GITHUB_TOKEN="$PAT_TOKEN"
+git clone -b "$BRANCH_NAME" "https://${GITHUB_TOKEN}@${REPO_URL}"
+if [ $? -ne 0 ]; then
+    echo "Failed to clone repository"
+    exit 1
+fi
+cd "$REPO_NAME"
+
+# Install requirements
+echo "Installing requirements..."
+if [ -f requirements.txt ]; then
+    "$HOME_DIR/miniconda3/envs/project/bin/pip" install -r requirements.txt
+else
+    echo "No requirements.txt found"
+fi
+
+sudo -u $USER tee $HOME_DIR/$REPO_NAME/.env <<EOF
+SECRET_NAME=$SECRET_NAME
+REGION_NAME=$REGION
+EOF
+
+cat <<EOF | sudo tee /etc/systemd/system/backend.service
+[Unit]
+Description=backend
+After=network.target
+
+[Service]
+Type=simple
+User=$USER
+WorkingDirectory=$HOME_DIR/$REPO_NAME
+ExecStart=$HOME_DIR/miniconda3/envs/project/bin/uvicorn backend:app --host 0.0.0.0 --reload --port 5000
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Reload systemd and start services
+echo "Reloading systemd and starting services..."
+sudo systemctl daemon-reload
+sudo systemctl enable backend
+sudo systemctl start backend
+
+echo "Setup completed successfully"
+```
 
 ## Creating Custom AMIs
 
@@ -528,14 +752,15 @@ The deployment uses AWS Systems Manager (SSM) to remotely execute the update scr
 AWS_ACCESS_KEY_ID          # AWS access key for GitHub Actions
 AWS_SECRET_ACCESS_KEY      # AWS secret key for GitHub Actions  
 AWS_REGION                 # AWS region (e.g., us-east-1)
-FRONTEND_ASG_NAME          # Frontend Auto Scaling Group name for deployment
-BACKEND_ASG_NAME           # Backend Auto Scaling Group name for deployment
+ASG_NAMES                  # Comma-separated list of Auto Scaling Group names for deployment
 TOKEN                      # GitHub Personal Access Token for repository access
 ```
 
-**Example ASG Names:**
-- `FRONTEND_ASG_NAME`: `chatbot-frontend-asg` (or your custom frontend ASG name)
-- `BACKEND_ASG_NAME`: `chatbot-backend-asg` (or your custom backend ASG name)
+**Example ASG_NAMES:**
+The `ASG_NAMES` secret should contain both frontend and backend ASG names separated by a comma:
+```
+chatbot-frontend-asg,chatbot-backend-asg
+```
 
 You can get the actual ASG names from your Terraform outputs:
 ```bash
@@ -544,6 +769,9 @@ terraform output frontend_asg_name
 
 # Get Backend ASG name  
 terraform output backend_asg_name
+
+# Example of setting ASG_NAMES secret (replace with your actual ASG names)
+# ASG_NAMES = "your-frontend-asg-name,your-backend-asg-name"
 ```
 
 ### Workflow Configuration:

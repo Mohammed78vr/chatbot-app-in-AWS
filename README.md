@@ -20,6 +20,7 @@ This project deploys a Retrieval-Augmented Generation (RAG) Chatbot application 
 - [Environment Variables Setup](#environment-variables-setup)
 - [Post-Deployment Verification](#post-deployment-verification)
 - [GitHub Actions CI/CD Integration](#github-actions-cicd-integration)
+- [Troubleshooting](#troubleshooting)
 - [Cleanup](#cleanup)
 
 ## Project Overview
@@ -784,6 +785,125 @@ on:
 ```
 
 This automation ensures consistent deployments and reduces manual intervention while maintaining application availability.
+
+## Troubleshooting
+
+### Database Table Not Created Issue
+
+If you encounter issues where the `advanced_chats` table was not created properly in the database, follow these steps to resolve the issue:
+
+#### Step 1: Create Database Setup Script
+
+1. **Connect to any backend ASG instance** via SSH or AWS Systems Manager Session Manager
+2. **Create the database setup script**:
+   ```bash
+   sudo -u ubuntu tee /home/ubuntu/chatbot-app-in-AWS/db_setup.sh <<'EOF'
+   #!/bin/bash
+
+   # Check if the correct number of arguments is provided
+   if [ $# -ne 4 ]; then
+       echo "Usage: $0 <db_host> <target_db> <db_username> <db_password>"
+       exit 1
+   fi
+
+   # Assign arguments to variables
+   DB_HOST="$1"
+   TARGET_DB="$2"
+   DB_USERNAME="$3"
+   DB_PASSWORD="$4"
+
+   # Database names
+   DEFAULT_DB="postgres"
+
+   # Set up PostgreSQL database
+   echo "Setting up database..."
+
+   # Step 1: Create the 'TARGET_DB' database
+   echo "Creating the $TARGET_DB database..."
+   psql "host=$DB_HOST port=5432 dbname=$DEFAULT_DB user=$DB_USERNAME password=$DB_PASSWORD sslmode=require" \
+       -c "CREATE DATABASE $TARGET_DB;" 2>/dev/null || echo "Database '$TARGET_DB' already exists."
+
+   # Step 2: Create the 'advanced_chats' table in the 'TARGET_DB' database
+   echo "Creating the 'advanced_chats' table in the $TARGET_DB database..."
+   psql "host=$DB_HOST port=5432 dbname=$TARGET_DB user=$DB_USERNAME password=$DB_PASSWORD sslmode=require" \
+       -c "CREATE TABLE IF NOT EXISTS advanced_chats (
+           id TEXT PRIMARY KEY,
+           name TEXT NOT NULL,
+           file_path TEXT NOT NULL,
+           last_update TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+           pdf_path TEXT,
+           pdf_name TEXT,
+           pdf_uuid TEXT
+       );"
+
+   echo "Database and table setup completed successfully."
+   EOF
+   ```
+
+3. **Make the script executable**:
+   ```bash
+   chmod +x /home/ubuntu/chatbot-app-in-AWS/db_setup.sh
+   ```
+
+#### Step 2: Run Database Setup Script
+
+1. **Get database credentials from AWS Secrets Manager** or use your known values:
+   ```bash
+   # Example values (replace with your actual values)
+   DB_HOST="your-rds-endpoint.region.rds.amazonaws.com"
+   TARGET_DB="chatbotdb"
+   DB_USERNAME="dbadmin"
+   DB_PASSWORD="your-database-password"
+   ```
+
+2. **Run the database setup script**:
+   ```bash
+   cd /home/ubuntu/chatbot-app-in-AWS
+   ./db_setup.sh "$DB_HOST" "$TARGET_DB" "$DB_USERNAME" "$DB_PASSWORD"
+   ```
+
+#### Step 3: Restart Backend Services
+
+After successfully creating the database table, restart the backend service on **all backend ASG instances**:
+
+1. **For the current instance**:
+   ```bash
+   sudo systemctl restart backend
+   sudo systemctl status backend
+   ```
+
+2. **For all other backend instances**, you can use AWS Systems Manager to run the restart command:
+   ```bash
+   # Get all backend ASG instance IDs
+   aws autoscaling describe-auto-scaling-groups \
+     --auto-scaling-group-name $(terraform output -raw backend_asg_name) \
+     --query 'AutoScalingGroups[0].Instances[*].InstanceId' \
+     --output text
+
+   # Restart backend service on all instances
+   aws ssm send-command \
+     --instance-ids $(aws autoscaling describe-auto-scaling-groups --auto-scaling-group-name $(terraform output -raw backend_asg_name) --query 'AutoScalingGroups[0].Instances[*].InstanceId' --output text) \
+     --document-name "AWS-RunShellScript" \
+     --parameters commands=["sudo systemctl restart backend && sudo systemctl status backend"] \
+     --comment "Restarting backend service after database table creation"
+   ```
+
+#### Step 4: Verify the Fix
+
+1. **Check that the table was created**:
+   ```bash
+   psql "host=$DB_HOST port=5432 dbname=$TARGET_DB user=$DB_USERNAME password=$DB_PASSWORD sslmode=require" \
+     -c "\dt" # List all tables
+   ```
+
+2. **Verify backend service is running**:
+   ```bash
+   sudo systemctl status backend
+   ```
+
+3. **Test the application** by accessing it through the frontend ALB DNS name and trying to upload a PDF or create a chat.
+
+This should resolve any issues with the database table not being created properly during the initial deployment.
 
 ## Cleanup
 

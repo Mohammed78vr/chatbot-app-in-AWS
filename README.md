@@ -771,7 +771,7 @@ terraform output frontend_asg_name
 terraform output backend_asg_name
 
 # Example of setting ASG_NAMES secret (replace with your actual ASG names)
-# ASG_NAMES = "your-frontend-asg-name,your-backend-asg-name"
+# ASG_NAMES = your-frontend-asg-name,your-backend-asg-name
 ```
 
 ### Workflow Configuration:

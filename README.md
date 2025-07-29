@@ -11,8 +11,9 @@ This project deploys a Retrieval-Augmented Generation (RAG) Chatbot application 
 - [Quick Start](#quick-start)
 - [Setup Scripts](#setup-scripts)
   - [ChromaDB Setup Script](#chromadb-setup-script)
-  - [Frontend/Backend Setup Script](#frontendbackend-setup-script)
-  - [Creating AMI for Auto Scaling Group](#creating-ami-for-auto-scaling-group)
+  - [Frontend Setup Script](#frontend-setup-script)
+  - [Backend Setup Script](#backend-setup-script)
+  - [Creating AMIs for Auto Scaling Groups](#creating-amis-for-auto-scaling-groups)
 - [Environment Variables Setup](#environment-variables-setup)
 - [Post-Deployment Verification](#post-deployment-verification)
 - [GitHub Actions CI/CD Integration](#github-actions-cicd-integration)
@@ -22,15 +23,12 @@ This project deploys a Retrieval-Augmented Generation (RAG) Chatbot application 
 
 The chatbot uses:
 
-- **Streamlit** for the user interface
-
-- **FastAPI** for handling backend logic
-
+- **Streamlit** for the user interface (frontend)
+- **FastAPI** for handling backend logic and API endpoints
 - **ChromaDB** (Vector Store) for retrieving relevant information from user-uploaded PDFs
-
 - **PostgreSQL** for structured data storage
 
-It enables users to chat normally and upload PDFs to ask questions specifically about the content of the uploaded documents, making the chatbot highly context-aware and document-focused.
+This is a microservices architecture where the frontend and backend are deployed separately with their own Auto Scaling Groups and Load Balancers. It enables users to chat normally and upload PDFs to ask questions specifically about the content of the uploaded documents, making the chatbot highly context-aware and document-focused.
 
 ## Project Structure
 
@@ -41,9 +39,11 @@ It enables users to chat normally and upload PDFs to ask questions specifically 
 ├── Terraform/                   # Terraform infrastructure code
 │   ├── modules/
 │   │   ├── vpc/                 # VPC, subnets, IGW, NAT Gateway, routing
-│   │   ├── ec2/                 # EC2 instance for ChromaDB
-│   │   ├── asg/                 # Auto Scaling Group for frontend/backend
-│   │   ├── alb/                 # Application Load Balancer
+│   │   ├── chromadb-ec2/        # EC2 instance for ChromaDB
+│   │   ├── frontend-asg/        # Auto Scaling Group for Streamlit frontend
+│   │   ├── backend-asg/         # Auto Scaling Group for FastAPI backend
+│   │   ├── frontend-alb/        # Internet-facing ALB for frontend
+│   │   ├── backend-alb/         # Internal ALB for backend
 │   │   ├── rds/                 # RDS PostgreSQL database
 │   │   ├── s3/                  # S3 bucket for storage
 │   │   ├── iam/                 # IAM roles and policies
@@ -54,6 +54,9 @@ It enables users to chat normally and upload PDFs to ask questions specifically 
 │   └── terraform.tfvars.example # Example variables file
 ├── imgs/
 │   └── stage-4.drawio.png       # Architecture diagram
+├── update_app.sh                # Application update script for CI/CD
+├── .gitignore                   # Git ignore file
+├── LICENSE                      # Project license
 ├── update_app.sh                # Application update script for CI/CD
 ├── .gitignore                   # Git ignore file
 ├── LICENSE                      # Project license
@@ -70,9 +73,10 @@ The infrastructure includes:
 - **Internet Gateway** and **NAT Gateway** for internet connectivity
 - **Security Groups** with least privilege access
 - **EC2 instance** in private subnet dedicated to running ChromaDB
-- **Auto Scaling Group** in private subnets for frontend (Streamlit) and backend (FastAPI)
-- **Application Load Balancer** in public subnets for internet-facing access
-- **RDS PostgreSQL** database in private subnet
+- **Separate Auto Scaling Groups** for frontend (Streamlit) and backend (FastAPI) in private subnets
+- **Internet-facing Application Load Balancer** for frontend access from the internet
+- **Internal Application Load Balancer** for backend communication within the VPC
+- **RDS PostgreSQL** database in private subnets with multi-AZ deployment
 - **S3 bucket** for storing chat history and PDF files
 - **AWS Secrets Manager** for centralized configuration management
 - **IAM roles** with permissions for S3, RDS, Secrets Manager, and SSM access
@@ -86,25 +90,30 @@ The diagram above illustrates the complete AWS infrastructure architecture deplo
 
 **Network Layer:**
 - **VPC (Virtual Private Cloud)**: Provides isolated network environment with CIDR block 10.0.0.0/16
-- **Public Subnets**: Host the Application Load Balancer across multiple availability zones
-- **Private Subnets**: Host the Auto Scaling Group, ChromaDB instance, and RDS database
+- **Public Subnets (10.0.1.0/24, 10.0.2.0/24)**: Host the internet-facing ALB across multiple availability zones
+- **Frontend Private Subnets (10.0.3.0/24, 10.0.4.0/24)**: Host the frontend Auto Scaling Group instances
+- **Backend Private Subnets (10.0.5.0/24, 10.0.6.0/24)**: Host the backend Auto Scaling Group instances and internal ALB
+- **ChromaDB Private Subnet (10.0.7.0/24)**: Hosts the dedicated ChromaDB EC2 instance
+- **RDS Private Subnets (10.0.8.0/24, 10.0.9.0/24)**: Host the RDS PostgreSQL database across multiple AZs
 - **Internet Gateway**: Enables internet connectivity for resources in public subnets
 - **NAT Gateway**: Enables outbound internet connectivity for resources in private subnets
 - **Route Tables**: Direct traffic between subnets and to the internet
 
 **Compute Layer:**
-- **Auto Scaling Group**: Hosts frontend (Streamlit) and backend (FastAPI) applications
+- **Frontend Auto Scaling Group**: Hosts Streamlit frontend applications in private subnets
+- **Backend Auto Scaling Group**: Hosts FastAPI backend applications in private subnets
 - **EC2 Instance for ChromaDB**: Dedicated instance in private subnet for vector database
-- **Application Load Balancer**: Routes external traffic to the Auto Scaling Group
+- **Internet-facing ALB**: Routes external traffic to the frontend ASG
+- **Internal ALB**: Routes internal traffic from frontend to backend ASG
 - **Security Groups**: Configured with minimal access between components
 
 **Database Layer:**
-- **Amazon RDS PostgreSQL**: Managed database service in private subnet for secure data storage
-- **Database Security Group**: Restricts access to only the ASG instances
+- **Amazon RDS PostgreSQL**: Managed database service in private subnets with multi-AZ deployment
+- **Database Security Group**: Restricts access to only the backend ASG instances
 
 **Storage Layer:**
 - **Amazon S3**: Object storage for chat history and uploaded PDF files
-- **S3 IAM Roles**: Secure access from EC2 to S3 bucket
+- **S3 IAM Roles**: Secure access from EC2 instances to S3 bucket
 
 **Security & Configuration Management:**
 - **AWS Secrets Manager**: Centralized secret management for database credentials, API keys, and configuration
@@ -158,14 +167,21 @@ The following variables have default values but can be customized:
 - `public_subnet_cidr`: First public subnet CIDR (default: "10.0.1.0/24")
 - `public_subnet_2_cidr`: Second public subnet CIDR (default: "10.0.6.0/24")
 - `private_subnet_cidr`: First private subnet CIDR for ChromaDB (default: "10.0.2.0/24")
-- `private_subnet_2_cidr`: Second private subnet CIDR for RDS (default: "10.0.3.0/24")
-- `private_subnet_3_cidr`: Third private subnet CIDR for ASG (default: "10.0.4.0/24")
-- `private_subnet_4_cidr`: Fourth private subnet CIDR for ASG (default: "10.0.5.0/24")
+- `frontend_subnet_1_cidr`: Frontend private subnet CIDR (AZ1) (default: "10.0.3.0/24")
+- `frontend_subnet_2_cidr`: Frontend private subnet CIDR (AZ2) (default: "10.0.4.0/24")
+- `backend_subnet_1_cidr`: Backend private subnet CIDR (AZ1) (default: "10.0.5.0/24")
+- `backend_subnet_2_cidr`: Backend private subnet CIDR (AZ2) (default: "10.0.6.0/24")
+- `chromadb_subnet_cidr`: ChromaDB private subnet CIDR (default: "10.0.7.0/24")
+- `rds_subnet_cidr`: RDS private subnet CIDR (AZ1) (default: "10.0.8.0/24")
+- `rds_subnet_2_cidr`: RDS private subnet CIDR (AZ2) (default: "10.0.9.0/24")
 - `db_name`: Database name (default: "chatbotdb")
 - `db_username`: Database username (default: "dbadmin")
 - `asg_min_size`: Minimum size of the Auto Scaling Group (default: 1)
 - `asg_max_size`: Maximum size of the Auto Scaling Group (default: 3)
 - `asg_desired_capacity`: Desired capacity of the Auto Scaling Group (default: 2)
+- `custom_ami_id`: Custom AMI ID for backend ASG instances (optional)
+- `chromadb_ami_id`: Custom AMI ID for ChromaDB instance (optional)
+- `frontend_ami_id`: Custom AMI ID for frontend ASG instances (optional)
 
 ### Example terraform.tfvars
 ```hcl
@@ -175,13 +191,16 @@ s3_bucket_name  = "my-unique-chatbot-bucket-12345"
 db_password     = "your-secure-password"
 
 # Network configuration
-# vpc_cidr             = "10.0.0.0/16"
-# public_subnet_cidr   = "10.0.1.0/24"  # Public subnet in AZ1 (for ALB)
-# public_subnet_2_cidr = "10.0.6.0/24"  # Public subnet in AZ2 (for ALB)
-# private_subnet_cidr  = "10.0.2.0/24"  # ChromaDB subnet
-# private_subnet_2_cidr = "10.0.3.0/24" # RDS subnet
-# private_subnet_3_cidr = "10.0.4.0/24" # ASG subnet (AZ1)
-# private_subnet_4_cidr = "10.0.5.0/24" # ASG subnet (AZ2)
+# vpc_cidr                 = "10.0.0.0/16"
+# public_subnet_cidr       = "10.0.1.0/24"  # Public subnet in AZ1 (for ALB)
+# public_subnet_2_cidr     = "10.0.2.0/24"  # Public subnet in AZ2 (for ALB)
+# frontend_subnet_1_cidr   = "10.0.3.0/24"  # Frontend private subnet (AZ1)
+# frontend_subnet_2_cidr   = "10.0.4.0/24"  # Frontend private subnet (AZ2)
+# backend_subnet_1_cidr    = "10.0.5.0/24"  # Backend private subnet (AZ1)
+# backend_subnet_2_cidr    = "10.0.6.0/24"  # Backend private subnet (AZ2)
+# chromadb_subnet_cidr     = "10.0.7.0/24"  # ChromaDB private subnet
+# rds_subnet_cidr          = "10.0.8.0/24"  # RDS private subnet (AZ1)
+# rds_subnet_2_cidr        = "10.0.9.0/24"  # RDS private subnet (AZ2)
 
 # Instance types
 # chromadb_instance_type = "t3.large"
@@ -204,7 +223,9 @@ db_password     = "your-secure-password"
 # chromadb_port   = "8000"
 
 # Auto Scaling Group configuration
-# custom_ami_id        = ""  # Provide your custom AMI ID if you have one
+# custom_ami_id        = ""  # Backend ASG AMI ID
+# chromadb_ami_id      = ""  # ChromaDB instance AMI ID
+# frontend_ami_id      = ""  # Frontend ASG AMI ID
 # asg_min_size         = 1
 # asg_max_size         = 3
 # asg_desired_capacity = 2
@@ -226,12 +247,13 @@ db_password     = "your-secure-password"
    # Edit terraform.tfvars with your values
    ```
 
-3. **Create a custom AMI for the Auto Scaling Group**
-   - Follow the instructions in the [Creating AMI for Auto Scaling Group](#creating-ami-for-auto-scaling-group) section
-   - Add the AMI ID to your terraform.tfvars file as `custom_ami_id`
+3. **Create custom AMIs for the Auto Scaling Groups**
+   - Follow the instructions in the [Creating AMIs for Auto Scaling Groups](#creating-amis-for-auto-scaling-groups) section
+   - Add the AMI IDs to your terraform.tfvars file as `custom_ami_id`, `frontend_ami_id`, and `chromadb_ami_id`
 
 4. **Initialize Terraform**
    ```bash
+   cd Terraform
    terraform init
    ```
 
@@ -247,13 +269,13 @@ db_password     = "your-secure-password"
 
 7. **Access your application**
    ```bash
-   # The application is accessible via the ALB DNS name
-   echo "Application URL: http://$(terraform output -raw alb_dns_name)"
+   # The application is accessible via the frontend ALB DNS name
+   echo "Application URL: http://$(terraform output -raw frontend_alb_dns_name)"
    ```
 
 ## Setup Scripts
 
-This section contains the setup scripts for both the ChromaDB EC2 instance and the frontend/backend instances in the Auto Scaling Group.
+This section contains the setup scripts for the ChromaDB EC2 instance and the separate frontend/backend instances in their respective Auto Scaling Groups.
 
 ### ChromaDB Setup Script
 
@@ -344,7 +366,13 @@ sudo systemctl start chromadb
 echo "Setup completed successfully"
 ```
 
-### Frontend/Backend Setup Script
+### Frontend Setup Script
+
+This script is used to set up the frontend (Streamlit) on an EC2 instance that will be used to create an AMI for the Frontend Auto Scaling Group.
+
+### Backend Setup Script
+
+This script is used to set up the backend (FastAPI) on an EC2 instance that will be used to create an AMI for the Backend Auto Scaling Group.
 
 This script is used to set up the frontend (Streamlit) and backend (FastAPI) on an EC2 instance that will be used to create an AMI for the Auto Scaling Group.
 
@@ -493,9 +521,9 @@ done
 echo "Setup completed successfully"
 ```
 
-### Creating AMI for Auto Scaling Group
+### Creating AMIs for Auto Scaling Groups
 
-To create a custom AMI for the Auto Scaling Group, follow these steps:
+To create custom AMIs for the Auto Scaling Groups, follow these steps:
 
 
 6. **Verify that the services are running**
@@ -557,19 +585,27 @@ After deployment, verify that all components are running properly:
 
 1. **Check the Auto Scaling Group instances**
    ```bash
-   aws ec2 describe-instances --filters "Name=tag:aws:autoscaling:groupName,Values=$(terraform output -raw asg_name)" --query "Reservations[*].Instances[*].[InstanceId, State.Name, PrivateIpAddress]" --output table
+   # Check frontend ASG instances
+   aws ec2 describe-instances --filters "Name=tag:aws:autoscaling:groupName,Values=$(terraform output -raw frontend_asg_name)" --query "Reservations[*].Instances[*].[InstanceId, State.Name, PrivateIpAddress]" --output table
+   
+   # Check backend ASG instances
+   aws ec2 describe-instances --filters "Name=tag:aws:autoscaling:groupName,Values=$(terraform output -raw backend_asg_name)" --query "Reservations[*].Instances[*].[InstanceId, State.Name, PrivateIpAddress]" --output table
    ```
 
 2. **Check the Application Load Balancer health**
    ```bash
-   aws elbv2 describe-target-health --target-group-arn $(terraform output -raw target_group_arn) --output table
+   # Check frontend ALB target health
+   aws elbv2 describe-target-health --target-group-arn $(terraform output -raw frontend_target_group_arn) --output table
+   
+   # Check backend ALB target health
+   aws elbv2 describe-target-health --target-group-arn $(terraform output -raw backend_target_group_arn) --output table
    ```
 
 3. **Access the web application**
    
-   Use the ALB DNS name to access the application:
+   Use the frontend ALB DNS name to access the application:
    ```bash
-   echo "Application URL: http://$(terraform output -raw alb_dns_name)"
+   echo "Application URL: http://$(terraform output -raw frontend_alb_dns_name)"
    ```
 
 ## GitHub Actions CI/CD Integration

@@ -3,7 +3,7 @@ name: Python App CI/CD Pipeline with AWS Deployment
 on:
   push:
     branches:
-      - stage-5
+      - main
 
 jobs:
   build-and-deploy:

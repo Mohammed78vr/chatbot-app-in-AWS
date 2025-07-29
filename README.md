@@ -10,10 +10,13 @@ This project deploys a Retrieval-Augmented Generation (RAG) Chatbot application 
 - [Configuration](#configuration)
 - [Quick Start](#quick-start)
 - [Setup Scripts](#setup-scripts)
-  - [ChromaDB Setup Script](#chromadb-setup-script)
-  - [Frontend Setup Script](#frontend-setup-script)
-  - [Backend Setup Script](#backend-setup-script)
-  - [Creating AMIs for Auto Scaling Groups](#creating-amis-for-auto-scaling-groups)
+  - [ChromaDB Instance Setup Script](#chromadb-instance-setup-script)
+  - [Frontend ASG Instance Setup Script](#frontend-asg-instance-setup-script)
+  - [Backend ASG Instance Setup Script](#backend-asg-instance-setup-script)
+- [Creating Custom AMIs](#creating-custom-amis)
+  - [Creating ChromaDB AMI](#creating-chromadb-ami)
+  - [Creating Frontend ASG AMI](#creating-frontend-asg-ami)
+  - [Creating Backend ASG AMI](#creating-backend-asg-ami)
 - [Environment Variables Setup](#environment-variables-setup)
 - [Post-Deployment Verification](#post-deployment-verification)
 - [GitHub Actions CI/CD Integration](#github-actions-cicd-integration)
@@ -53,10 +56,7 @@ This is a microservices architecture where the frontend and backend are deployed
 │   ├── outputs.tf               # Output definitions
 │   └── terraform.tfvars.example # Example variables file
 ├── imgs/
-│   └── stage-4.drawio.png       # Architecture diagram
-├── update_app.sh                # Application update script for CI/CD
-├── .gitignore                   # Git ignore file
-├── LICENSE                      # Project license
+│   └── stage-5.drawio.png       # Architecture diagram
 ├── update_app.sh                # Application update script for CI/CD
 ├── .gitignore                   # Git ignore file
 ├── LICENSE                      # Project license
@@ -248,7 +248,7 @@ db_password     = "your-secure-password"
    ```
 
 3. **Create custom AMIs for the Auto Scaling Groups**
-   - Follow the instructions in the [Creating AMIs for Auto Scaling Groups](#creating-amis-for-auto-scaling-groups) section
+   - Follow the instructions in the [Creating Custom AMIs](#creating-custom-amis) section
    - Add the AMI IDs to your terraform.tfvars file as `custom_ami_id`, `frontend_ami_id`, and `chromadb_ami_id`
 
 4. **Initialize Terraform**
@@ -277,7 +277,7 @@ db_password     = "your-secure-password"
 
 This section contains the setup scripts for the ChromaDB EC2 instance and the separate frontend/backend instances in their respective Auto Scaling Groups.
 
-### ChromaDB Setup Script
+### ChromaDB Instance Setup Script
 
 This script is used to set up ChromaDB on the dedicated EC2 instance.
 
@@ -366,186 +366,79 @@ sudo systemctl start chromadb
 echo "Setup completed successfully"
 ```
 
-### Frontend Setup Script
+### Frontend ASG Instance Setup Script
 
 This script is used to set up the frontend (Streamlit) on an EC2 instance that will be used to create an AMI for the Frontend Auto Scaling Group.
 
-### Backend Setup Script
+**Script will be provided here**
+
+### Backend ASG Instance Setup Script
 
 This script is used to set up the backend (FastAPI) on an EC2 instance that will be used to create an AMI for the Backend Auto Scaling Group.
 
-This script is used to set up the frontend (Streamlit) and backend (FastAPI) on an EC2 instance that will be used to create an AMI for the Auto Scaling Group.
+**Script will be provided here**
 
-Create a file named `setup.sh`, copy the script below, and run it with the required arguments:
-   
+## Creating Custom AMIs
+
+### Creating ChromaDB AMI
+
+To create a custom AMI for the ChromaDB instance, follow these steps:
+
+1. **Launch a temporary EC2 instance** (Amazon Linux 2023 recommended)
+2. **Connect to the instance** via SSH
+3. **Run the ChromaDB setup script** as described in the [ChromaDB Instance Setup Script](#chromadb-instance-setup-script) section
+4. **Verify ChromaDB is running**
    ```bash
-   chmod +x setup.sh
-   bash setup.sh <PAT_token> <repo_url> <branch_name> <db_host> <target_db> <db_username> <db_password> <secret_name> <region>
+   sudo systemctl status chromadb
    ```
-   
-   **Script Arguments:**
-   - **PAT_token**: Your GitHub personal access token
-   - **repo_url**: The URL of your GitHub repository (without https://)
-   - **branch_name**: The branch name to use on the EC2
-   - **db_host**: The database host (e.g., [dbteststage6.postgres.database.azure.com](http://dbteststage6.postgres.database.azure.com/)).
-   - **target_db**: The name of the database that was created.
-   - **db_username**: The username for the database server.
-   - **db_password**: The password for the database server.
-   - **secret_name**: The name of the AWS Secrets Manager secret.
-   - **region**: The AWS region where the secret is stored.
-
-```bash
-#!/bin/bash
-
-# Check if the correct number of arguments is provided
-if [ $# -ne 9 ]; then
-    echo "Usage: $0 <PAT_token> <repo_url> <branch_name> <db_host> <target_db> <db_username> <db_password> <secret_name> <region>"
-    exit 1
-fi
-
-# Assign arguments to variables
-PAT_TOKEN="$1"
-REPO_URL="$2"
-BRANCH_NAME="$3"
-DB_HOST="$4"
-TARGET_DB="$5"
-DB_USERNAME="$6"
-DB_PASSWORD="$7"
-SECRET_NAME="$8"
-REGION="$9"
-REPO_NAME=$(basename "$REPO_URL" .git)
-USER=$(whoami)
-HOME_DIR=$(eval echo ~$USER)
-
-# Database names
-DEFAULT_DB="postgres"
-
-# Set up PostgreSQL database
-echo "Setting up database..."
-
-# Step 1: Create the 'TARGET_DB' database
-echo "Creating the $TARGET_DB database..."
-psql "host=$DB_HOST port=5432 dbname=$DEFAULT_DB user=$DB_USERNAME password=$DB_PASSWORD sslmode=require" \
-    -c "CREATE DATABASE $TARGET_DB;" 2>/dev/null || echo "Database '$TARGET_DB' already exists."
-
-# Step 2: Create the 'advanced_chats' table in the 'TARGET_DB' database
-echo "Creating the 'advanced_chats' table in the $TARGET_DB database..."
-psql "host=$DB_HOST port=5432 dbname=$TARGET_DB user=$DB_USERNAME password=$DB_PASSWORD sslmode=require" \
-    -c "CREATE TABLE IF NOT EXISTS advanced_chats (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        file_path TEXT NOT NULL,
-        last_update TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        pdf_path TEXT,
-        pdf_name TEXT,
-        pdf_uuid TEXT
-    );"
-
-echo "Database and table setup completed successfully."
-
-# Set up Conda environment
-echo "Setting up conda environment..."
-source "$HOME_DIR/miniconda3/etc/profile.d/conda.sh"
-if ! conda env list | grep -q "^project "; then
-    conda create -y -n project python=3.11
-fi
-
-# Clone the repository
-echo "Cloning repository..."
-cd "$HOME_DIR"
-if [ -d "$REPO_NAME" ]; then
-    echo "Directory $REPO_NAME already exists. Please remove it or choose a different repository."
-    exit 1
-fi
-export GITHUB_TOKEN="$PAT_TOKEN"
-git clone -b "$BRANCH_NAME" "https://${GITHUB_TOKEN}@${REPO_URL}"
-if [ $? -ne 0 ]; then
-    echo "Failed to clone repository"
-    exit 1
-fi
-cd "$REPO_NAME"
-
-# Install requirements
-echo "Installing requirements..."
-if [ -f requirements.txt ]; then
-    "$HOME_DIR/miniconda3/envs/project/bin/pip" install -r requirements.txt
-else
-    echo "No requirements.txt found"
-fi
-
-sudo -u $USER tee $HOME_DIR/$REPO_NAME/.env <<EOF
-SECRET_NAME=$SECRET_NAME
-REGION_NAME=$REGION
-EOF
-
-cat <<EOF | sudo tee /etc/systemd/system/backend.service
-[Unit]
-Description=backend
-After=network.target
-
-[Service]
-Type=simple
-User=$USER
-WorkingDirectory=$HOME_DIR/$REPO_NAME
-ExecStart=$HOME_DIR/miniconda3/envs/project/bin/uvicorn backend:app --reload --port 5000
-Restart=always
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-cat <<EOF | sudo tee /etc/systemd/system/frontend.service
-[Unit]
-Description=Streamlit
-After=network.target
-
-[Service]
-Type=simple
-User=$USER
-WorkingDirectory=$HOME_DIR/$REPO_NAME
-ExecStart=$HOME_DIR/miniconda3/envs/project/bin/streamlit run chatbot.py
-Restart=always
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-# Reload systemd and start services
-echo "Reloading systemd and starting services..."
-sudo systemctl daemon-reload
-for service in backend frontend; do
-    sudo systemctl enable $service
-    sudo systemctl start $service
-done
-
-echo "Setup completed successfully"
-```
-
-### Creating AMIs for Auto Scaling Groups
-
-To create custom AMIs for the Auto Scaling Groups, follow these steps:
-
-
-6. **Verify that the services are running**
-   ```bash
-   sudo systemctl status backend
-   sudo systemctl status frontend
-   ```
-
-7. **Create an AMI from the instance**
+5. **Create an AMI from the instance**
    - In the AWS Console, select the instance
    - Click Actions > Image and templates > Create image
-   - Provide a name and description for the AMI
+   - Provide a name like "chromadb-custom-ami"
    - Click Create image
-   - Wait for the AMI creation to complete (check the AMIs section in the EC2 console)
+   - Wait for the AMI creation to complete
+6. **Note the AMI ID** and add it to your terraform.tfvars as `chromadb_ami_id`
+7. **Terminate the temporary instance**
 
-8. **Use the AMI ID in your terraform.tfvars file**
-   ```hcl
-   custom_ami_id = "ami-0123456789abcdef0"  # Replace with your AMI ID
+### Creating Frontend ASG AMI
+
+To create a custom AMI for the Frontend Auto Scaling Group, follow these steps:
+
+1. **Launch a temporary EC2 instance** (Amazon Linux 2023 recommended)
+2. **Connect to the instance** via SSH
+3. **Run the Frontend setup script** as described in the [Frontend ASG Instance Setup Script](#frontend-asg-instance-setup-script) section
+4. **Verify the frontend service is running**
+   ```bash
+   sudo systemctl status frontend
    ```
+5. **Create an AMI from the instance**
+   - In the AWS Console, select the instance
+   - Click Actions > Image and templates > Create image
+   - Provide a name like "frontend-asg-custom-ami"
+   - Click Create image
+   - Wait for the AMI creation to complete
+6. **Note the AMI ID** and add it to your terraform.tfvars as `frontend_ami_id`
+7. **Terminate the temporary instance**
 
-9. **Terminate the temporary instance**
-   - Once the AMI is created and you've noted the AMI ID, you can terminate the temporary instance
+### Creating Backend ASG AMI
+
+To create a custom AMI for the Backend Auto Scaling Group, follow these steps:
+
+1. **Launch a temporary EC2 instance** (Amazon Linux 2023 recommended)
+2. **Connect to the instance** via SSH
+3. **Run the Backend setup script** as described in the [Backend ASG Instance Setup Script](#backend-asg-instance-setup-script) section
+4. **Verify the backend service is running**
+   ```bash
+   sudo systemctl status backend
+   ```
+5. **Create an AMI from the instance**
+   - In the AWS Console, select the instance
+   - Click Actions > Image and templates > Create image
+   - Provide a name like "backend-asg-custom-ami"
+   - Click Create image
+   - Wait for the AMI creation to complete
+6. **Note the AMI ID** and add it to your terraform.tfvars as `custom_ami_id`
+7. **Terminate the temporary instance**
 
 ## Environment Variables Setup
 
@@ -563,7 +456,8 @@ aws secretsmanager update-secret --secret-id chatbot-secrets \
     "PROJ-OPENAI-API-KEY": "your_actual_openai_api_key_here",
     "PROJ-S3-BUCKET-NAME": "your_s3_bucket_name",
     "PROJ-CHROMADB-HOST": "your_chromadb_private_ip",
-    "PROJ-CHROMADB-PORT": "8000"
+    "PROJ-CHROMADB-PORT": "8000",
+    "PROJ-BACKEND-ALB-DNS-NAME": "your_backend_alb_dns_name"
   }'
 ```
    
@@ -619,7 +513,7 @@ The workflow (`deploy.yml`) performs the following steps:
 3. **Dependency Installation**: Installs requirements from `requirements.txt`
 4. **Testing**: Runs application tests (placeholder for actual tests)
 5. **AWS Configuration**: Configures AWS credentials for deployment
-6. **ASG Deployment**: Uses AWS SSM to execute the update script on the target ASG instances
+6. **ASG Deployment**: Uses AWS SSM to execute the update script on both frontend and backend ASG instances
 
 ### Deployment Process:
 The deployment uses AWS Systems Manager (SSM) to remotely execute the update script on your ASG instances, which:
@@ -634,8 +528,22 @@ The deployment uses AWS Systems Manager (SSM) to remotely execute the update scr
 AWS_ACCESS_KEY_ID          # AWS access key for GitHub Actions
 AWS_SECRET_ACCESS_KEY      # AWS secret key for GitHub Actions  
 AWS_REGION                 # AWS region (e.g., us-east-1)
-ASG_NAME                   # Auto Scaling Group for deployment target
+FRONTEND_ASG_NAME          # Frontend Auto Scaling Group name for deployment
+BACKEND_ASG_NAME           # Backend Auto Scaling Group name for deployment
 TOKEN                      # GitHub Personal Access Token for repository access
+```
+
+**Example ASG Names:**
+- `FRONTEND_ASG_NAME`: `chatbot-frontend-asg` (or your custom frontend ASG name)
+- `BACKEND_ASG_NAME`: `chatbot-backend-asg` (or your custom backend ASG name)
+
+You can get the actual ASG names from your Terraform outputs:
+```bash
+# Get Frontend ASG name
+terraform output frontend_asg_name
+
+# Get Backend ASG name  
+terraform output backend_asg_name
 ```
 
 ### Workflow Configuration:
